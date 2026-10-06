@@ -1,9 +1,10 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import { createHmac } from 'node:crypto';
 import { connectDatabase } from './database';
-import { Admin, Entry, mongoose, Site, Worker } from './models';
+import { Admin, Entry, Site, Worker } from './models';
 
 const app = express();
 app.disable('x-powered-by');
@@ -30,6 +31,14 @@ function text(value: unknown) {
 
 function normalizeEmail(value: unknown) {
   return text(value).toLowerCase();
+}
+
+function normalizeSiteName(value: unknown) {
+  return text(value).replace(/\s+/g, ' ');
+}
+
+function siteNameKey(value: unknown) {
+  return normalizeSiteName(value).toLowerCase();
 }
 
 function validId(value: unknown): value is string {
@@ -98,13 +107,8 @@ function jwtSecret() {
   return value;
 }
 
-function pinLookupSecret() {
-  const value = process.env.PIN_LOOKUP_SECRET;
-  return value && value.length >= 24 ? value : jwtSecret();
-}
-
 function workerPinKey(pin: string) {
-  return createHmac('sha256', pinLookupSecret())
+  return createHmac('sha256', jwtSecret())
     .update(`worktime-worker-pin:${pin}`)
     .digest('hex');
 }
@@ -113,7 +117,7 @@ function fail(res: Response, status: number, code: string, error: string) {
   return res.status(status).json({ code, error });
 }
 
-function authenticate(req: Request, res: Response, next: NextFunction) {
+async function authenticate(req: Request, res: Response, next: NextFunction) {
   try {
     const header = text(req.headers.authorization);
     if (!header.startsWith('Bearer ')) {
@@ -124,8 +128,18 @@ function authenticate(req: Request, res: Response, next: NextFunction) {
     if (
       typeof decoded === 'string' ||
       (decoded.role !== 'admin' && decoded.role !== 'worker') ||
-      typeof decoded.id !== 'string'
+      typeof decoded.id !== 'string' ||
+      !validId(decoded.id)
     ) {
+      return fail(res, 401, 'AUTH_REQUIRED', 'Please sign in again.');
+    }
+
+    await connectDatabase();
+    const accountExists = decoded.role === 'admin'
+      ? await Admin.exists({ _id: decoded.id, active: true })
+      : await Worker.exists({ _id: decoded.id, active: true });
+
+    if (!accountExists) {
       return fail(res, 401, 'AUTH_REQUIRED', 'Please sign in again.');
     }
 
@@ -141,29 +155,6 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
     return fail(res, 403, 'ADMIN_ONLY', 'Administrator access is required.');
   }
   next();
-}
-
-async function enrichEntries(entries: any[]) {
-  const siteIds = [...new Set(entries.map((entry) => entry.site).filter(validId))];
-  const workerIds = [...new Set(entries.map((entry) => entry.workerId).filter(validId))];
-
-  const [sites, workers] = await Promise.all([
-    Site.find({ _id: { $in: siteIds } }).select('name').lean(),
-    Worker.find({ _id: { $in: workerIds } }).select('name active').lean()
-  ]);
-
-  const siteMap = new Map(sites.map((site) => [String(site._id), site.name]));
-  const workerMap = new Map(workers.map((worker) => [String(worker._id), worker]));
-
-  return entries.map((entry) => {
-    const worker = workerMap.get(entry.workerId);
-    return {
-      ...entry,
-      siteName: siteMap.get(entry.site) || 'Unknown site',
-      workerName: worker?.name || 'Unknown worker',
-      workerActive: worker?.active ?? false
-    };
-  });
 }
 
 function validateDate(date: string) {
@@ -218,28 +209,32 @@ async function bootstrapOrLoginAdmin(email: string, password: string) {
 }
 
 async function findWorkerByPin(pin: string) {
-  const key = workerPinKey(pin);
-  const directMatch = await Worker.findOne({ pinKey: key, active: true }).select('+pinHash +pinKey');
-  if (directMatch && await bcrypt.compare(pin, directMatch.pinHash)) {
-    return directMatch;
-  }
+  const worker = await Worker.findOne({ pinKey: workerPinKey(pin), active: true }).select('+pinHash');
+  if (!worker) return null;
+  return await bcrypt.compare(pin, worker.pinHash) ? worker : null;
+}
 
-  // Temporary compatibility path for workers created before pinKey existed,
-  // and for one-time migration after PIN_LOOKUP_SECRET changes.
-  const candidates = await Worker.find({ active: true }).select('+pinHash +pinKey');
-  for (const candidate of candidates) {
-    if (!candidate.pinHash || !(await bcrypt.compare(pin, candidate.pinHash))) continue;
+async function listEntries(query: Record<string, unknown>, limit: number) {
+  const rows = await Entry.find(query)
+    .sort({ date: -1, createdAt: -1 })
+    .limit(limit)
+    .populate({ path: 'workerId', select: 'name active' })
+    .populate({ path: 'site', select: 'name' })
+    .lean();
 
-    candidate.pinKey = key;
-    try {
-      await candidate.save();
-      return candidate;
-    } catch (error: any) {
-      if (error?.code === 11000) return null;
-      throw error;
-    }
-  }
-  return null;
+  return rows.map((row: any) => ({
+    _id: String(row._id),
+    workerId: String(row.workerId?._id || row.workerId || ''),
+    workerName: row.workerId?.name || 'Unknown worker',
+    workerActive: row.workerId?.active ?? false,
+    date: row.date,
+    site: String(row.site?._id || row.site || ''),
+    siteName: row.site?.name || 'Unknown site',
+    start: row.start ?? null,
+    end: row.end ?? null,
+    regular: row.regular,
+    overtime: row.overtime
+  }));
 }
 
 app.get('/api/health', async (_req, res) => {
@@ -288,28 +283,23 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.get('/api/sites', authenticate, async (_req, res) => {
-  await connectDatabase();
-  return res.json(await Site.find({ active: true }).sort({ name: 1 }).lean());
+  return res.json(
+    await Site.find({ active: true }).select('name active').sort({ name: 1 }).lean()
+  );
 });
 
 app.get('/api/entries', authenticate, async (req, res) => {
-  await connectDatabase();
   const user = (req as AuthenticatedRequest).user;
   const query = user.role === 'worker' ? { workerId: user.id } : {};
   const limit = user.role === 'worker' ? 30 : 5000;
-  const entries = await Entry.find(query).sort({ date: -1, createdAt: -1 }).limit(limit).lean();
-  return res.json(await enrichEntries(entries));
+  return res.json(await listEntries(query, limit));
 });
 
 app.post('/api/entries', authenticate, async (req, res) => {
-  await connectDatabase();
   const user = (req as AuthenticatedRequest).user;
   if (user.role !== 'worker') {
     return fail(res, 403, 'WORKER_ONLY', 'Worker access is required.');
   }
-
-  const worker = await Worker.findOne({ _id: user.id, active: true }).select('_id');
-  if (!worker) return fail(res, 403, 'WORKER_DISABLED', 'This worker account is disabled.');
 
   const date = text(req.body?.date);
   const site = text(req.body?.site);
@@ -323,18 +313,16 @@ app.post('/api/entries', authenticate, async (req, res) => {
 
   const calculated = hoursFor(date, text(req.body?.start) || null, text(req.body?.end) || null);
   const entry = await Entry.create({ workerId: user.id, date, site, ...calculated });
-  return res.status(201).json(entry);
+  return res.status(201).json({ _id: entry._id });
 });
 
 app.get('/api/admin/workers', authenticate, requireAdmin, async (_req, res) => {
-  await connectDatabase();
   return res.json(
-    await Worker.find().select('name active createdAt updatedAt').sort({ active: -1, name: 1 }).lean()
+    await Worker.find().select('name active').sort({ active: -1, name: 1 }).lean()
   );
 });
 
 app.post('/api/admin/workers', authenticate, requireAdmin, async (req, res) => {
-  await connectDatabase();
   const name = text(req.body?.name);
   const pin = String(req.body?.pin ?? '');
 
@@ -346,7 +334,7 @@ app.post('/api/admin/workers', authenticate, requireAdmin, async (req, res) => {
   }
 
   const pinKey = workerPinKey(pin);
-  if (await Worker.findOne({ pinKey }).select('_id').lean()) {
+  if (await Worker.exists({ pinKey })) {
     return fail(res, 409, 'PIN_EXISTS', 'This PIN is already assigned to another worker.');
   }
 
@@ -361,7 +349,6 @@ app.post('/api/admin/workers', authenticate, requireAdmin, async (req, res) => {
 });
 
 app.patch('/api/admin/workers/:id', authenticate, requireAdmin, async (req, res) => {
-  await connectDatabase();
   if (!validId(req.params.id)) return fail(res, 400, 'INVALID_WORKER', 'Worker was not found.');
 
   const worker = await Worker.findById(req.params.id).select('+pinHash +pinKey');
@@ -382,8 +369,7 @@ app.patch('/api/admin/workers/:id', authenticate, requireAdmin, async (req, res)
     }
 
     const pinKey = workerPinKey(pin);
-    const duplicate = await Worker.findOne({ pinKey, _id: { $ne: worker._id } }).select('_id').lean();
-    if (duplicate) {
+    if (await Worker.exists({ pinKey, _id: { $ne: worker._id } })) {
       return fail(res, 409, 'PIN_EXISTS', 'This PIN is already assigned to another worker.');
     }
 
@@ -397,48 +383,52 @@ app.patch('/api/admin/workers/:id', authenticate, requireAdmin, async (req, res)
 });
 
 app.get('/api/admin/sites', authenticate, requireAdmin, async (_req, res) => {
-  await connectDatabase();
-  return res.json(await Site.find().sort({ active: -1, name: 1 }).lean());
+  return res.json(
+    await Site.find().select('name active').sort({ active: -1, name: 1 }).lean()
+  );
 });
 
 app.post('/api/admin/sites', authenticate, requireAdmin, async (req, res) => {
-  await connectDatabase();
-  const name = text(req.body?.name);
+  const name = normalizeSiteName(req.body?.name);
   if (name.length < 2 || name.length > 80) {
     return fail(res, 400, 'INVALID_SITE_NAME', 'Site name must be between 2 and 80 characters.');
   }
 
-  const duplicate = await Site.findOne({ name }).select('_id').lean();
-  if (duplicate) return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
+  const nameKey = siteNameKey(name);
+  if (await Site.exists({ nameKey })) {
+    return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
+  }
 
-  return res.status(201).json(await Site.create({ name, active: true }));
+  const site = await Site.create({ name, nameKey, active: true });
+  return res.status(201).json({ _id: site._id, name: site.name, active: site.active });
 });
 
 app.patch('/api/admin/sites/:id', authenticate, requireAdmin, async (req, res) => {
-  await connectDatabase();
   if (!validId(req.params.id)) return fail(res, 400, 'INVALID_SITE', 'Site was not found.');
 
-  const site = await Site.findById(req.params.id);
+  const site = await Site.findById(req.params.id).select('+nameKey');
   if (!site) return fail(res, 404, 'SITE_NOT_FOUND', 'Site was not found.');
 
   if (req.body?.name !== undefined) {
-    const name = text(req.body.name);
+    const name = normalizeSiteName(req.body.name);
     if (name.length < 2 || name.length > 80) {
       return fail(res, 400, 'INVALID_SITE_NAME', 'Site name must be between 2 and 80 characters.');
     }
 
-    const duplicate = await Site.findOne({ name, _id: { $ne: site._id } }).select('_id').lean();
-    if (duplicate) return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
+    const nameKey = siteNameKey(name);
+    if (await Site.exists({ nameKey, _id: { $ne: site._id } })) {
+      return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
+    }
     site.name = name;
+    site.nameKey = nameKey;
   }
 
   if (typeof req.body?.active === 'boolean') site.active = req.body.active;
   await site.save();
-  return res.json(site);
+  return res.json({ _id: site._id, name: site.name, active: site.active });
 });
 
 app.patch('/api/admin/entries/:id', authenticate, requireAdmin, async (req, res) => {
-  await connectDatabase();
   if (!validId(req.params.id)) {
     return fail(res, 400, 'INVALID_ENTRY', 'Timesheet entry was not found.');
   }
@@ -447,30 +437,28 @@ app.patch('/api/admin/entries/:id', authenticate, requireAdmin, async (req, res)
   if (!entry) return fail(res, 404, 'ENTRY_NOT_FOUND', 'Timesheet entry was not found.');
 
   const date = req.body?.date === undefined ? entry.date : text(req.body.date);
-  const site = req.body?.site === undefined ? entry.site : text(req.body.site);
+  const site = req.body?.site === undefined ? String(entry.site) : text(req.body.site);
   validateDate(date);
   await ensureSite(site, false);
 
-  const duplicate = await Entry.findOne({
-    workerId: entry.workerId,
-    date,
-    _id: { $ne: entry._id }
-  }).select('_id').lean();
-  if (duplicate) {
+  if (await Entry.exists({ workerId: entry.workerId, date, _id: { $ne: entry._id } })) {
     return fail(res, 409, 'ENTRY_EXISTS', 'This worker already has an entry for that date.');
   }
 
-  const calculated = hoursFor(date, text(req.body?.start) || null, text(req.body?.end) || null);
+  const start = req.body?.start === undefined ? entry.start : text(req.body.start) || null;
+  const end = req.body?.end === undefined ? entry.end : text(req.body.end) || null;
+  const calculated = hoursFor(date, start, end);
+
   entry.date = date;
-  entry.site = site;
+  entry.site = new mongoose.Types.ObjectId(site);
   entry.start = calculated.start;
   entry.end = calculated.end;
   entry.regular = calculated.regular;
   entry.overtime = calculated.overtime;
   await entry.save();
 
-  const [enriched] = await enrichEntries([entry.toObject()]);
-  return res.json(enriched);
+  const [updated] = await listEntries({ _id: entry._id }, 1);
+  return res.json(updated);
 });
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
@@ -486,6 +474,9 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (mongoError?.code === 11000) {
     if (mongoError.keyPattern?.pinKey) {
       return fail(res, 409, 'PIN_EXISTS', 'This PIN is already assigned to another worker.');
+    }
+    if (mongoError.keyPattern?.nameKey) {
+      return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
     }
     if (mongoError.keyPattern?.workerId && mongoError.keyPattern?.date) {
       return fail(res, 409, 'ENTRY_EXISTS', 'An entry already exists for this worker and date.');
