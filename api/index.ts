@@ -1,5 +1,5 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
-import mongoose, { Schema, model, models, type Model } from 'mongoose';
+import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { createHmac } from 'node:crypto';
@@ -39,29 +39,29 @@ class AppError extends Error {
 
 const schemaOptions = { timestamps: true, versionKey: false, strict: true } as const;
 
-const adminSchema = new Schema<AdminRecord>({
+const adminSchema = new mongoose.Schema<AdminRecord>({
   email: { type: String, required: true, unique: true, trim: true, lowercase: true, maxlength: 254 },
   passwordHash: { type: String, required: true, select: false },
   active: { type: Boolean, default: true, required: true }
 }, schemaOptions);
 
-const workerSchema = new Schema<WorkerRecord>({
+const workerSchema = new mongoose.Schema<WorkerRecord>({
   name: { type: String, required: true, trim: true, minlength: 2, maxlength: 80 },
   pinHash: { type: String, required: true, select: false },
   pinKey: { type: String, required: true, unique: true, select: false, minlength: 64, maxlength: 64 },
   active: { type: Boolean, default: true, required: true }
 }, schemaOptions);
 
-const siteSchema = new Schema<SiteRecord>({
+const siteSchema = new mongoose.Schema<SiteRecord>({
   name: { type: String, required: true, trim: true, minlength: 2, maxlength: 80 },
   nameKey: { type: String, required: true, unique: true, select: false, maxlength: 80 },
   active: { type: Boolean, default: true, required: true }
 }, schemaOptions);
 
-const entrySchema = new Schema<EntryRecord>({
-  workerId: { type: Schema.Types.ObjectId, ref: 'Worker', required: true, index: true },
+const entrySchema = new mongoose.Schema<EntryRecord>({
+  workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Worker', required: true, index: true },
   date: { type: String, required: true, index: true, match: /^\d{4}-\d{2}-\d{2}$/ },
-  site: { type: Schema.Types.ObjectId, ref: 'Site', required: true },
+  site: { type: mongoose.Schema.Types.ObjectId, ref: 'Site', required: true },
   start: { type: String, default: null, match: /^\d{2}:\d{2}$/ },
   end: { type: String, default: null, match: /^\d{2}:\d{2}$/ },
   regular: { type: Number, required: true, default: 0, min: 0 },
@@ -69,10 +69,10 @@ const entrySchema = new Schema<EntryRecord>({
 }, schemaOptions);
 entrySchema.index({ workerId: 1, date: 1 }, { unique: true });
 
-const Admin = (models.Admin as Model<AdminRecord> | undefined) ?? model<AdminRecord>('Admin', adminSchema);
-const Worker = (models.Worker as Model<WorkerRecord> | undefined) ?? model<WorkerRecord>('Worker', workerSchema);
-const Site = (models.Site as Model<SiteRecord> | undefined) ?? model<SiteRecord>('Site', siteSchema);
-const Entry = (models.Entry as Model<EntryRecord> | undefined) ?? model<EntryRecord>('Entry', entrySchema);
+const Admin = (mongoose.models.Admin as mongoose.Model<AdminRecord> | undefined) ?? mongoose.model<AdminRecord>('Admin', adminSchema);
+const Worker = (mongoose.models.Worker as mongoose.Model<WorkerRecord> | undefined) ?? mongoose.model<WorkerRecord>('Worker', workerSchema);
+const Site = (mongoose.models.Site as mongoose.Model<SiteRecord> | undefined) ?? mongoose.model<SiteRecord>('Site', siteSchema);
+const Entry = (mongoose.models.Entry as mongoose.Model<EntryRecord> | undefined) ?? mongoose.model<EntryRecord>('Entry', entrySchema);
 
 let connectionPromise: Promise<typeof mongoose> | null = null;
 
