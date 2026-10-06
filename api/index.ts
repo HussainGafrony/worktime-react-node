@@ -1,10 +1,8 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
+import mongoose, { Schema, model, models, type Model } from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
-import mongoose from 'mongoose';
 import { createHmac } from 'node:crypto';
-import { connectDatabase } from './database';
-import { Admin, Entry, Site, Worker } from './models';
 
 const app = express();
 app.disable('x-powered-by');
@@ -15,6 +13,19 @@ type AuthClaims = JwtPayload & { role: Role; id: string };
 type AuthenticatedRequest = Request & { user: AuthClaims };
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<unknown> | unknown;
 
+type AdminRecord = { email: string; passwordHash: string; active: boolean };
+type WorkerRecord = { name: string; pinHash: string; pinKey: string; active: boolean };
+type SiteRecord = { name: string; nameKey: string; active: boolean };
+type EntryRecord = {
+  workerId: mongoose.Types.ObjectId;
+  date: string;
+  site: mongoose.Types.ObjectId;
+  start: string | null;
+  end: string | null;
+  regular: number;
+  overtime: number;
+};
+
 class AppError extends Error {
   constructor(
     public status: number,
@@ -24,6 +35,63 @@ class AppError extends Error {
     super(message);
     this.name = 'AppError';
   }
+}
+
+const schemaOptions = { timestamps: true, versionKey: false, strict: true } as const;
+
+const adminSchema = new Schema<AdminRecord>({
+  email: { type: String, required: true, unique: true, trim: true, lowercase: true, maxlength: 254 },
+  passwordHash: { type: String, required: true, select: false },
+  active: { type: Boolean, default: true, required: true }
+}, schemaOptions);
+
+const workerSchema = new Schema<WorkerRecord>({
+  name: { type: String, required: true, trim: true, minlength: 2, maxlength: 80 },
+  pinHash: { type: String, required: true, select: false },
+  pinKey: { type: String, required: true, unique: true, select: false, minlength: 64, maxlength: 64 },
+  active: { type: Boolean, default: true, required: true }
+}, schemaOptions);
+
+const siteSchema = new Schema<SiteRecord>({
+  name: { type: String, required: true, trim: true, minlength: 2, maxlength: 80 },
+  nameKey: { type: String, required: true, unique: true, select: false, maxlength: 80 },
+  active: { type: Boolean, default: true, required: true }
+}, schemaOptions);
+
+const entrySchema = new Schema<EntryRecord>({
+  workerId: { type: Schema.Types.ObjectId, ref: 'Worker', required: true, index: true },
+  date: { type: String, required: true, index: true, match: /^\d{4}-\d{2}-\d{2}$/ },
+  site: { type: Schema.Types.ObjectId, ref: 'Site', required: true },
+  start: { type: String, default: null, match: /^\d{2}:\d{2}$/ },
+  end: { type: String, default: null, match: /^\d{2}:\d{2}$/ },
+  regular: { type: Number, required: true, default: 0, min: 0 },
+  overtime: { type: Number, required: true, default: 0, min: 0 }
+}, schemaOptions);
+entrySchema.index({ workerId: 1, date: 1 }, { unique: true });
+
+const Admin = (models.Admin as Model<AdminRecord> | undefined) ?? model<AdminRecord>('Admin', adminSchema);
+const Worker = (models.Worker as Model<WorkerRecord> | undefined) ?? model<WorkerRecord>('Worker', workerSchema);
+const Site = (models.Site as Model<SiteRecord> | undefined) ?? model<SiteRecord>('Site', siteSchema);
+const Entry = (models.Entry as Model<EntryRecord> | undefined) ?? model<EntryRecord>('Entry', entrySchema);
+
+let connectionPromise: Promise<typeof mongoose> | null = null;
+
+async function connectDatabase() {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error('MONGODB_URI is not configured');
+  if (mongoose.connection.readyState === 1) return;
+
+  if (!connectionPromise) {
+    connectionPromise = mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 10000,
+      maxPoolSize: 10
+    }).catch((error) => {
+      connectionPromise = null;
+      throw error;
+    });
+  }
+
+  await connectionPromise;
 }
 
 function route(handler: AsyncHandler) {
@@ -89,9 +157,7 @@ function parseTime(value: string) {
 }
 
 function hoursFor(date: string, start?: string | null, end?: string | null) {
-  if (dayOfWeek(date) === 0) {
-    return { start: null, end: null, regular: 0, overtime: 0 };
-  }
+  if (dayOfWeek(date) === 0) return { start: null, end: null, regular: 0, overtime: 0 };
 
   const startMinutes = start ? parseTime(start) : null;
   const endMinutes = end ? parseTime(end) : null;
@@ -129,20 +195,14 @@ function workerPinKey(pin: string) {
 }
 
 function validateDate(date: string) {
-  if (!isValidDate(date)) {
-    throw new AppError(400, 'INVALID_DATE', 'Please choose a valid date.');
-  }
-  if (date > todayInAthens()) {
-    throw new AppError(400, 'FUTURE_DATE', 'Future dates are not allowed.');
-  }
+  if (!isValidDate(date)) throw new AppError(400, 'INVALID_DATE', 'Please choose a valid date.');
+  if (date > todayInAthens()) throw new AppError(400, 'FUTURE_DATE', 'Future dates are not allowed.');
 }
 
 async function authenticate(req: Request, res: Response, next: NextFunction) {
   try {
     const header = text(req.headers.authorization);
-    if (!header.startsWith('Bearer ')) {
-      return fail(res, 401, 'AUTH_REQUIRED', 'Please sign in again.');
-    }
+    if (!header.startsWith('Bearer ')) return fail(res, 401, 'AUTH_REQUIRED', 'Please sign in again.');
 
     const decoded = jwt.verify(header.slice(7), jwtSecret());
     if (
@@ -159,9 +219,7 @@ async function authenticate(req: Request, res: Response, next: NextFunction) {
       ? await Admin.exists({ _id: decoded.id, active: true })
       : await Worker.exists({ _id: decoded.id, active: true });
 
-    if (!activeAccount) {
-      return fail(res, 401, 'AUTH_REQUIRED', 'Please sign in again.');
-    }
+    if (!activeAccount) return fail(res, 401, 'AUTH_REQUIRED', 'Please sign in again.');
 
     (req as AuthenticatedRequest).user = decoded as AuthClaims;
     return next();
@@ -178,10 +236,7 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
 }
 
 async function ensureSite(siteId: string, mustBeActive: boolean) {
-  if (!validId(siteId)) {
-    throw new AppError(400, 'INVALID_SITE', 'Please choose a valid work site.');
-  }
-
+  if (!validId(siteId)) throw new AppError(400, 'INVALID_SITE', 'Please choose a valid work site.');
   const site = await Site.findById(siteId).select('active');
   if (!site || (mustBeActive && !site.active)) {
     throw new AppError(400, 'SITE_UNAVAILABLE', 'The selected work site is not available.');
@@ -194,12 +249,8 @@ async function bootstrapOrLoginAdmin(email: string, password: string) {
   if (!hasAdmin) {
     const configuredEmail = normalizeEmail(process.env.ADMIN_EMAIL);
     const configuredPassword = process.env.ADMIN_PASSWORD || '';
-    if (!configuredEmail || !configuredPassword) {
-      throw new AppError(500, 'ADMIN_NOT_CONFIGURED', 'Admin login is not configured.');
-    }
-    if (email !== configuredEmail || password !== configuredPassword) {
-      throw new AppError(401, 'INVALID_CREDENTIALS', 'Incorrect email or password.');
-    }
+    if (!configuredEmail || !configuredPassword) throw new AppError(500, 'ADMIN_NOT_CONFIGURED', 'Admin login is not configured.');
+    if (email !== configuredEmail || password !== configuredPassword) throw new AppError(401, 'INVALID_CREDENTIALS', 'Incorrect email or password.');
 
     try {
       return await Admin.create({
@@ -261,9 +312,7 @@ app.post('/api/auth/login', route(async (req, res) => {
   if (body.role === 'admin') {
     const email = normalizeEmail(body.email);
     const password = String(body.password ?? '');
-    if (!email || !password) {
-      return fail(res, 400, 'LOGIN_FIELDS_REQUIRED', 'Email and password are required.');
-    }
+    if (!email || !password) return fail(res, 400, 'LOGIN_FIELDS_REQUIRED', 'Email and password are required.');
 
     const account = await bootstrapOrLoginAdmin(email, password);
     return res.json({
@@ -272,10 +321,7 @@ app.post('/api/auth/login', route(async (req, res) => {
     });
   }
 
-  if (body.role !== 'worker') {
-    return fail(res, 400, 'INVALID_ROLE', 'Please choose a valid login type.');
-  }
-
+  if (body.role !== 'worker') return fail(res, 400, 'INVALID_ROLE', 'Please choose a valid login type.');
   const pin = String(body.pin ?? '');
   if (!pin) return fail(res, 400, 'LOGIN_FIELDS_REQUIRED', 'PIN is required.');
   if (!/^\d{4,12}$/.test(pin)) return fail(res, 401, 'INVALID_CREDENTIALS', 'Incorrect PIN.');
@@ -290,9 +336,7 @@ app.post('/api/auth/login', route(async (req, res) => {
 }));
 
 app.get('/api/sites', authenticate, route(async (_req, res) => {
-  return res.json(
-    await Site.find({ active: true }).select('name active').sort({ name: 1 }).lean()
-  );
+  return res.json(await Site.find({ active: true }).select('name active').sort({ name: 1 }).lean());
 }));
 
 app.get('/api/entries', authenticate, route(async (req, res) => {
@@ -304,9 +348,7 @@ app.get('/api/entries', authenticate, route(async (req, res) => {
 
 app.post('/api/entries', authenticate, route(async (req, res) => {
   const user = (req as AuthenticatedRequest).user;
-  if (user.role !== 'worker') {
-    return fail(res, 403, 'WORKER_ONLY', 'Worker access is required.');
-  }
+  if (user.role !== 'worker') return fail(res, 403, 'WORKER_ONLY', 'Worker access is required.');
 
   const date = text(req.body?.date);
   const site = text(req.body?.site);
@@ -324,60 +366,38 @@ app.post('/api/entries', authenticate, route(async (req, res) => {
 }));
 
 app.get('/api/admin/workers', authenticate, requireAdmin, route(async (_req, res) => {
-  return res.json(
-    await Worker.find().select('name active').sort({ active: -1, name: 1 }).lean()
-  );
+  return res.json(await Worker.find().select('name active').sort({ active: -1, name: 1 }).lean());
 }));
 
 app.post('/api/admin/workers', authenticate, requireAdmin, route(async (req, res) => {
   const name = text(req.body?.name);
   const pin = String(req.body?.pin ?? '');
-
-  if (name.length < 2 || name.length > 80) {
-    return fail(res, 400, 'INVALID_WORKER_NAME', 'Worker name must be between 2 and 80 characters.');
-  }
-  if (!/^\d{4,12}$/.test(pin)) {
-    return fail(res, 400, 'INVALID_PIN', 'PIN must contain 4–12 digits.');
-  }
+  if (name.length < 2 || name.length > 80) return fail(res, 400, 'INVALID_WORKER_NAME', 'Worker name must be between 2 and 80 characters.');
+  if (!/^\d{4,12}$/.test(pin)) return fail(res, 400, 'INVALID_PIN', 'PIN must contain 4–12 digits.');
 
   const pinKey = workerPinKey(pin);
-  if (await Worker.exists({ pinKey })) {
-    return fail(res, 409, 'PIN_EXISTS', 'This PIN is already assigned to another worker.');
-  }
+  if (await Worker.exists({ pinKey })) return fail(res, 409, 'PIN_EXISTS', 'This PIN is already assigned to another worker.');
 
-  const worker = await Worker.create({
-    name,
-    pinHash: await bcrypt.hash(pin, 12),
-    pinKey,
-    active: true
-  });
-
+  const worker = await Worker.create({ name, pinHash: await bcrypt.hash(pin, 12), pinKey, active: true });
   return res.status(201).json({ _id: String(worker._id), name: worker.name, active: worker.active });
 }));
 
 app.patch('/api/admin/workers/:id', authenticate, requireAdmin, route(async (req, res) => {
   if (!validId(req.params.id)) return fail(res, 400, 'INVALID_WORKER', 'Worker was not found.');
-
   const worker = await Worker.findById(req.params.id).select('+pinHash +pinKey');
   if (!worker) return fail(res, 404, 'WORKER_NOT_FOUND', 'Worker was not found.');
 
   if (req.body?.name !== undefined) {
     const name = text(req.body.name);
-    if (name.length < 2 || name.length > 80) {
-      return fail(res, 400, 'INVALID_WORKER_NAME', 'Worker name must be between 2 and 80 characters.');
-    }
+    if (name.length < 2 || name.length > 80) return fail(res, 400, 'INVALID_WORKER_NAME', 'Worker name must be between 2 and 80 characters.');
     worker.name = name;
   }
 
   if (req.body?.pin !== undefined && req.body.pin !== '') {
     const pin = String(req.body.pin);
-    if (!/^\d{4,12}$/.test(pin)) {
-      return fail(res, 400, 'INVALID_PIN', 'PIN must contain 4–12 digits.');
-    }
+    if (!/^\d{4,12}$/.test(pin)) return fail(res, 400, 'INVALID_PIN', 'PIN must contain 4–12 digits.');
     const pinKey = workerPinKey(pin);
-    if (await Worker.exists({ pinKey, _id: { $ne: worker._id } })) {
-      return fail(res, 409, 'PIN_EXISTS', 'This PIN is already assigned to another worker.');
-    }
+    if (await Worker.exists({ pinKey, _id: { $ne: worker._id } })) return fail(res, 409, 'PIN_EXISTS', 'This PIN is already assigned to another worker.');
     worker.pinHash = await bcrypt.hash(pin, 12);
     worker.pinKey = pinKey;
   }
@@ -388,40 +408,27 @@ app.patch('/api/admin/workers/:id', authenticate, requireAdmin, route(async (req
 }));
 
 app.get('/api/admin/sites', authenticate, requireAdmin, route(async (_req, res) => {
-  return res.json(
-    await Site.find().select('name active').sort({ active: -1, name: 1 }).lean()
-  );
+  return res.json(await Site.find().select('name active').sort({ active: -1, name: 1 }).lean());
 }));
 
 app.post('/api/admin/sites', authenticate, requireAdmin, route(async (req, res) => {
   const name = normalizeSiteName(req.body?.name);
-  if (name.length < 2 || name.length > 80) {
-    return fail(res, 400, 'INVALID_SITE_NAME', 'Site name must be between 2 and 80 characters.');
-  }
-
+  if (name.length < 2 || name.length > 80) return fail(res, 400, 'INVALID_SITE_NAME', 'Site name must be between 2 and 80 characters.');
   const nameKey = siteNameKey(name);
-  if (await Site.exists({ nameKey })) {
-    return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
-  }
-
+  if (await Site.exists({ nameKey })) return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
   return res.status(201).json(await Site.create({ name, nameKey, active: true }));
 }));
 
 app.patch('/api/admin/sites/:id', authenticate, requireAdmin, route(async (req, res) => {
   if (!validId(req.params.id)) return fail(res, 400, 'INVALID_SITE', 'Site was not found.');
-
   const site = await Site.findById(req.params.id);
   if (!site) return fail(res, 404, 'SITE_NOT_FOUND', 'Site was not found.');
 
   if (req.body?.name !== undefined) {
     const name = normalizeSiteName(req.body.name);
-    if (name.length < 2 || name.length > 80) {
-      return fail(res, 400, 'INVALID_SITE_NAME', 'Site name must be between 2 and 80 characters.');
-    }
+    if (name.length < 2 || name.length > 80) return fail(res, 400, 'INVALID_SITE_NAME', 'Site name must be between 2 and 80 characters.');
     const nameKey = siteNameKey(name);
-    if (await Site.exists({ nameKey, _id: { $ne: site._id } })) {
-      return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
-    }
+    if (await Site.exists({ nameKey, _id: { $ne: site._id } })) return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
     site.name = name;
     site.nameKey = nameKey;
   }
@@ -433,7 +440,6 @@ app.patch('/api/admin/sites/:id', authenticate, requireAdmin, route(async (req, 
 
 app.patch('/api/admin/entries/:id', authenticate, requireAdmin, route(async (req, res) => {
   if (!validId(req.params.id)) return fail(res, 400, 'INVALID_ENTRY', 'Timesheet entry was not found.');
-
   const entry: any = await Entry.findById(req.params.id);
   if (!entry) return fail(res, 404, 'ENTRY_NOT_FOUND', 'Timesheet entry was not found.');
 
@@ -442,9 +448,7 @@ app.patch('/api/admin/entries/:id', authenticate, requireAdmin, route(async (req
   validateDate(date);
   await ensureSite(site, false);
 
-  if (await Entry.exists({ workerId: entry.workerId, date, _id: { $ne: entry._id } })) {
-    return fail(res, 409, 'ENTRY_EXISTS', 'This worker already has an entry for that date.');
-  }
+  if (await Entry.exists({ workerId: entry.workerId, date, _id: { $ne: entry._id } })) return fail(res, 409, 'ENTRY_EXISTS', 'This worker already has an entry for that date.');
 
   const start = req.body?.start === undefined ? entry.start : text(req.body.start) || null;
   const end = req.body?.end === undefined ? entry.end : text(req.body.end) || null;
@@ -463,21 +467,13 @@ app.patch('/api/admin/entries/:id', authenticate, requireAdmin, route(async (req
 }));
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  if (error instanceof AppError) {
-    return fail(res, error.status, error.code, error.message);
-  }
+  if (error instanceof AppError) return fail(res, error.status, error.code, error.message);
 
   const mongoError = error as { code?: number; keyPattern?: Record<string, unknown> };
   if (mongoError.code === 11000) {
-    if (mongoError.keyPattern?.pinKey) {
-      return fail(res, 409, 'PIN_EXISTS', 'This PIN is already assigned to another worker.');
-    }
-    if (mongoError.keyPattern?.nameKey) {
-      return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
-    }
-    if (mongoError.keyPattern?.workerId && mongoError.keyPattern?.date) {
-      return fail(res, 409, 'ENTRY_EXISTS', 'An entry already exists for this worker and date.');
-    }
+    if (mongoError.keyPattern?.pinKey) return fail(res, 409, 'PIN_EXISTS', 'This PIN is already assigned to another worker.');
+    if (mongoError.keyPattern?.nameKey) return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
+    if (mongoError.keyPattern?.workerId && mongoError.keyPattern?.date) return fail(res, 409, 'ENTRY_EXISTS', 'An entry already exists for this worker and date.');
     return fail(res, 409, 'DUPLICATE_VALUE', 'This value is already in use.');
   }
 
