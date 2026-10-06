@@ -1,0 +1,12 @@
+{
+  "name": "WorkTime",
+  "short_name": "WorkTime",
+  "description": "Worker time reporting",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#0a2f5f",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
