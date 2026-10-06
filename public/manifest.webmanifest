@@ -4,8 +4,8 @@
   "description": "Worker time reporting",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f4f7fb",
-  "theme_color": "#0a2f5f",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFE500",
   "icons": [
     { "src": "/kt-app-icon.png", "sizes": "128x128", "type": "image/png", "purpose": "any maskable" }
   ]
