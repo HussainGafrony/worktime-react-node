@@ -80,11 +80,9 @@ function App() {
   };
 
   if (!role) return <Login lang={lang} setLang={changeLanguage} onLogin={login} />;
-  return role === 'admin' ? (
-    <Admin lang={lang} setLang={changeLanguage} logout={logout} />
-  ) : (
-    <WorkerView lang={lang} setLang={changeLanguage} logout={logout} />
-  );
+  return role === 'admin'
+    ? <Admin lang={lang} setLang={changeLanguage} logout={logout} />
+    : <WorkerView lang={lang} setLang={changeLanguage} logout={logout} />;
 }
 
 type SharedProps = {
@@ -105,7 +103,7 @@ function LanguageToggle({ lang, setLang }: { lang: Lang; setLang: (lang: Lang) =
 function Header({ title, lang, setLang, logout }: SharedProps & { title: string }) {
   return (
     <section className="hero row">
-      <div>
+      <div className="brand-block">
         <b>WorkTime</b>
         <span>{title}</span>
       </div>
@@ -119,7 +117,6 @@ function Header({ title, lang, setLang, logout }: SharedProps & { title: string 
 
 function Login({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang) => void; onLogin: (role: Role, token: string) => void }) {
   const [mode, setMode] = useState<Role>('worker');
-  const [workerCode, setWorkerCode] = useState('');
   const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -132,11 +129,11 @@ function Login({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang) =
     setLoading(true);
     try {
       const payload = mode === 'worker'
-        ? { role: 'worker', workerCode, pin }
+        ? { role: 'worker', pin }
         : { role: 'admin', email, password };
       const result = await api<{ role: Role; token: string }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(payload)
       });
       onLogin(result.role, result.token);
     } catch (err) {
@@ -150,25 +147,38 @@ function Login({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang) =
     <main className="shell login-shell">
       <section className="hero login-hero">
         <div className="login-hero-top">
-          <div>
+          <div className="brand-block">
             <b>WorkTime</b>
             <span>{t(lang, 'appSubtitle')}</span>
           </div>
           <LanguageToggle lang={lang} setLang={setLang} />
         </div>
       </section>
+
       <form className="card" onSubmit={submit}>
         <div className="tabs" role="tablist">
-          <button type="button" className={mode === 'worker' ? 'active' : ''} onClick={() => { setMode('worker'); setError(''); }}>{t(lang, 'worker')}</button>
-          <button type="button" className={mode === 'admin' ? 'active' : ''} onClick={() => { setMode('admin'); setError(''); }}>{t(lang, 'admin')}</button>
+          <button type="button" className={mode === 'worker' ? 'active' : ''} onClick={() => { setMode('worker'); setError(''); }}>
+            {t(lang, 'worker')}
+          </button>
+          <button type="button" className={mode === 'admin' ? 'active' : ''} onClick={() => { setMode('admin'); setError(''); }}>
+            {t(lang, 'admin')}
+          </button>
         </div>
+
         <h1>{mode === 'worker' ? t(lang, 'workerLogin') : t(lang, 'adminLogin')}</h1>
+
         {mode === 'worker' ? (
           <>
-            <label htmlFor="worker-code">{t(lang, 'workerCode')}</label>
-            <input id="worker-code" value={workerCode} autoComplete="username" onChange={(event) => setWorkerCode(event.target.value)} required />
             <label htmlFor="worker-pin">{t(lang, 'pin')}</label>
-            <input id="worker-pin" type="password" inputMode="numeric" autoComplete="current-password" value={pin} onChange={(event) => setPin(event.target.value)} required />
+            <input
+              id="worker-pin"
+              type="password"
+              inputMode="numeric"
+              autoComplete="current-password"
+              value={pin}
+              onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 12))}
+              required
+            />
           </>
         ) : (
           <>
@@ -178,6 +188,7 @@ function Login({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang) =
             <input id="admin-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
           </>
         )}
+
         {error && <Alert kind="error">{error}</Alert>}
         <button className="primary" type="submit" disabled={loading}>{loading ? t(lang, 'loading') : t(lang, 'login')}</button>
         <p className="muted">{t(lang, 'loginHint')}</p>
@@ -210,7 +221,7 @@ function WorkerView({ lang, setLang, logout }: SharedProps) {
     try {
       const [siteRows, entryRows] = await Promise.all([
         api<Site[]>('/sites'),
-        api<Entry[]>('/entries'),
+        api<Entry[]>('/entries')
       ]);
       setSites(siteRows);
       setEntries(entryRows);
@@ -221,9 +232,7 @@ function WorkerView({ lang, setLang, logout }: SharedProps) {
     }
   };
 
-  useEffect(() => {
-    void load();
-  }, []);
+  useEffect(() => { void load(); }, []);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -233,7 +242,7 @@ function WorkerView({ lang, setLang, logout }: SharedProps) {
     try {
       await api('/entries', {
         method: 'POST',
-        body: JSON.stringify({ date, site, start: sunday ? null : start, end: sunday ? null : end }),
+        body: JSON.stringify({ date, site, start: sunday ? null : start, end: sunday ? null : end })
       });
       setMessage(t(lang, 'submitted'));
       await load();
@@ -247,6 +256,7 @@ function WorkerView({ lang, setLang, logout }: SharedProps) {
   return (
     <main className="shell wide">
       <Header title={t(lang, 'worker')} lang={lang} setLang={setLang} logout={logout} />
+
       <form className="card" onSubmit={submit}>
         <h2>{t(lang, 'newEntry')}</h2>
         <div className="form-grid">
@@ -262,6 +272,7 @@ function WorkerView({ lang, setLang, logout }: SharedProps) {
             </select>
           </div>
         </div>
+
         {!sunday ? (
           <div className="two">
             <div>
@@ -274,6 +285,7 @@ function WorkerView({ lang, setLang, logout }: SharedProps) {
             </div>
           </div>
         ) : <Alert kind="info">{t(lang, 'sundayNote')}</Alert>}
+
         {error && <Alert kind="error">{error}</Alert>}
         {message && <Alert kind="success">{message}</Alert>}
         <button className="primary" type="submit" disabled={saving || loading}>{saving ? t(lang, 'saving') : t(lang, 'submit')}</button>
@@ -331,7 +343,7 @@ function Admin({ lang, setLang, logout }: SharedProps) {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<Filters>({ workerId: '', site: '', date: '', week: '', month: '' });
-  const [workerDraft, setWorkerDraft] = useState<{ id?: string; name: string; workerCode: string; pin: string }>({ name: '', workerCode: '', pin: '' });
+  const [workerDraft, setWorkerDraft] = useState<{ id?: string; name: string; pin: string }>({ name: '', pin: '' });
   const [siteDraft, setSiteDraft] = useState<{ id?: string; name: string }>({ name: '' });
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
   const [entryDraft, setEntryDraft] = useState({ date: today, site: '', start: '08:00', end: '16:00' });
@@ -349,7 +361,7 @@ function Admin({ lang, setLang, logout }: SharedProps) {
       const [entryRows, workerRows, siteRows] = await Promise.all([
         api<Entry[]>('/entries'),
         api<Worker[]>('/admin/workers'),
-        api<Site[]>('/admin/sites'),
+        api<Site[]>('/admin/sites')
       ]);
       setEntries(entryRows);
       setWorkers(workerRows);
@@ -361,9 +373,7 @@ function Admin({ lang, setLang, logout }: SharedProps) {
     }
   };
 
-  useEffect(() => {
-    void load();
-  }, []);
+  useEffect(() => { void load(); }, []);
 
   const filteredEntries = useMemo(() => entries.filter((entry) => {
     if (filters.workerId && entry.workerId !== filters.workerId) return false;
@@ -376,7 +386,9 @@ function Admin({ lang, setLang, logout }: SharedProps) {
 
   const activeWorkers = workers.filter((worker) => worker.active);
   const activeWorkerIds = new Set(activeWorkers.map((worker) => worker._id));
-  const submittedTodayIds = new Set(entries.filter((entry) => entry.date === today && activeWorkerIds.has(entry.workerId)).map((entry) => entry.workerId));
+  const submittedTodayIds = new Set(
+    entries.filter((entry) => entry.date === today && activeWorkerIds.has(entry.workerId)).map((entry) => entry.workerId)
+  );
 
   const resetMessages = () => {
     setError('');
@@ -391,17 +403,17 @@ function Admin({ lang, setLang, logout }: SharedProps) {
       if (workerDraft.id) {
         await api(`/admin/workers/${workerDraft.id}`, {
           method: 'PATCH',
-          body: JSON.stringify({ name: workerDraft.name, workerCode: workerDraft.workerCode, ...(workerDraft.pin ? { pin: workerDraft.pin } : {}) }),
+          body: JSON.stringify({ name: workerDraft.name, ...(workerDraft.pin ? { pin: workerDraft.pin } : {}) })
         });
         setMessage(t(lang, 'updatedWorker'));
       } else {
         await api('/admin/workers', {
           method: 'POST',
-          body: JSON.stringify({ name: workerDraft.name, workerCode: workerDraft.workerCode, pin: workerDraft.pin }),
+          body: JSON.stringify({ name: workerDraft.name, pin: workerDraft.pin })
         });
         setMessage(t(lang, 'createdWorker'));
       }
-      setWorkerDraft({ name: '', workerCode: '', pin: '' });
+      setWorkerDraft({ name: '', pin: '' });
       await load();
     } catch (err) {
       handleError(err);
@@ -414,7 +426,10 @@ function Admin({ lang, setLang, logout }: SharedProps) {
     if (worker.active && !window.confirm(t(lang, 'confirmDisableWorker'))) return;
     resetMessages();
     try {
-      await api(`/admin/workers/${worker._id}`, { method: 'PATCH', body: JSON.stringify({ active: !worker.active }) });
+      await api(`/admin/workers/${worker._id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ active: !worker.active })
+      });
       setMessage(t(lang, 'updatedWorker'));
       await load();
     } catch (err) {
@@ -474,8 +489,8 @@ function Admin({ lang, setLang, logout }: SharedProps) {
           date: entryDraft.date,
           site: entryDraft.site,
           start: sunday ? null : entryDraft.start,
-          end: sunday ? null : entryDraft.end,
-        }),
+          end: sunday ? null : entryDraft.end
+        })
       });
       setEditingEntry(null);
       setMessage(t(lang, 'updatedEntry'));
@@ -493,13 +508,15 @@ function Admin({ lang, setLang, logout }: SharedProps) {
       return;
     }
     setError('');
-    const headers = [t(lang, 'workerName'), t(lang, 'workerCode'), t(lang, 'date'), t(lang, 'workSite'), t(lang, 'start'), t(lang, 'finish'), t(lang, 'regular'), t(lang, 'overtime')];
-    const rows = filteredEntries.map((entry) => [entry.workerName, entry.workerCode || '', entry.date, entry.siteName, entry.start || '', entry.end || '', entry.regular, entry.overtime]);
+    const headers = [t(lang, 'workerName'), t(lang, 'date'), t(lang, 'workSite'), t(lang, 'start'), t(lang, 'finish'), t(lang, 'regular'), t(lang, 'overtime')];
+    const rows = filteredEntries.map((entry) => [entry.workerName, entry.date, entry.siteName, entry.start || '', entry.end || '', entry.regular, entry.overtime]);
+
     if (format === 'csv') {
       const csv = `\uFEFF${[headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\r\n')}`;
       downloadFile(csv, 'text/csv;charset=utf-8', `worktime-${today}.csv`);
       return;
     }
+
     const table = `<html><head><meta charset="utf-8"></head><body><table border="1"><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((value) => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
     downloadFile(`\uFEFF${table}`, 'application/vnd.ms-excel;charset=utf-8', `worktime-${today}.xls`);
   };
@@ -507,6 +524,7 @@ function Admin({ lang, setLang, logout }: SharedProps) {
   return (
     <main className="shell wide admin-shell">
       <Header title={t(lang, 'dashboard')} lang={lang} setLang={setLang} logout={logout} />
+
       <nav className="nav admin-nav">
         {(['timesheets', 'workers', 'sites'] as AdminTab[]).map((item) => (
           <button type="button" key={item} className={tab === item ? 'active' : ''} onClick={() => { setTab(item); resetMessages(); }}>
@@ -525,6 +543,7 @@ function Admin({ lang, setLang, logout }: SharedProps) {
             <Stat value={submittedTodayIds.size} label={t(lang, 'submittedToday')} />
             <Stat value={Math.max(0, activeWorkers.length - submittedTodayIds.size)} label={t(lang, 'missingToday')} />
           </div>
+
           <div className="section-heading">
             <h2>{t(lang, 'timesheets')}</h2>
             <div className="button-row">
@@ -532,12 +551,13 @@ function Admin({ lang, setLang, logout }: SharedProps) {
               <button type="button" onClick={() => exportRows('xls')}>{t(lang, 'exportExcel')}</button>
             </div>
           </div>
+
           <div className="filters">
             <div>
               <label>{t(lang, 'workerLabel')}</label>
               <select value={filters.workerId} onChange={(event) => setFilters((current) => ({ ...current, workerId: event.target.value }))}>
                 <option value="">{t(lang, 'allWorkers')}</option>
-                {workers.map((worker) => <option key={worker._id} value={worker._id}>{worker.name} ({worker.workerCode})</option>)}
+                {workers.map((worker) => <option key={worker._id} value={worker._id}>{worker.name}</option>)}
               </select>
             </div>
             <div>
@@ -563,44 +583,46 @@ function Admin({ lang, setLang, logout }: SharedProps) {
               <button type="button" onClick={() => setFilters({ workerId: '', site: '', date: '', week: '', month: '' })}>{t(lang, 'clearFilters')}</button>
             </div>
           </div>
-          {loading ? <p className="muted">{t(lang, 'loading')}</p> : (
-            <AdminEntriesTable entries={filteredEntries} lang={lang} onEdit={openEntryEdit} />
-          )}
+
+          {loading ? <p className="muted">{t(lang, 'loading')}</p> : <AdminEntriesTable entries={filteredEntries} lang={lang} onEdit={openEntryEdit} />}
         </section>
       )}
 
       {tab === 'workers' && (
         <section className="card">
           <div className="section-heading"><h2>{t(lang, 'workers')}</h2></div>
-          <form className="editor-form" onSubmit={saveWorker}>
+          <form className="editor-form worker-editor" onSubmit={saveWorker}>
             <div>
               <label>{t(lang, 'workerName')}</label>
               <input value={workerDraft.name} onChange={(event) => setWorkerDraft((current) => ({ ...current, name: event.target.value }))} required />
             </div>
             <div>
-              <label>{t(lang, 'workerCode')}</label>
-              <input value={workerDraft.workerCode} placeholder={t(lang, 'workerCodeHint')} onChange={(event) => setWorkerDraft((current) => ({ ...current, workerCode: event.target.value.toUpperCase() }))} required />
-            </div>
-            <div>
               <label>{workerDraft.id ? t(lang, 'newPinOptional') : t(lang, 'pin')}</label>
-              <input type="password" inputMode="numeric" placeholder={t(lang, 'pinHint')} value={workerDraft.pin} onChange={(event) => setWorkerDraft((current) => ({ ...current, pin: event.target.value }))} required={!workerDraft.id} />
+              <input
+                type="password"
+                inputMode="numeric"
+                placeholder={t(lang, 'pinHint')}
+                value={workerDraft.pin}
+                onChange={(event) => setWorkerDraft((current) => ({ ...current, pin: event.target.value.replace(/\D/g, '').slice(0, 12) }))}
+                required={!workerDraft.id}
+              />
             </div>
             <div className="form-actions">
               <button className="primary compact" type="submit" disabled={saving}>{saving ? t(lang, 'saving') : workerDraft.id ? t(lang, 'updateWorker') : t(lang, 'addWorker')}</button>
-              {workerDraft.id && <button type="button" onClick={() => setWorkerDraft({ name: '', workerCode: '', pin: '' })}>{t(lang, 'cancel')}</button>}
+              {workerDraft.id && <button type="button" onClick={() => setWorkerDraft({ name: '', pin: '' })}>{t(lang, 'cancel')}</button>}
             </div>
           </form>
+
           <div className="manage-list">
             {workers.map((worker) => (
               <div className="manage-row" key={worker._id}>
-                <div>
-                  <strong>{worker.name}</strong>
-                  <span>{worker.workerCode}</span>
-                </div>
+                <div><strong>{worker.name}</strong></div>
                 <StatusBadge active={worker.active} lang={lang} />
                 <div className="button-row">
-                  <button type="button" onClick={() => setWorkerDraft({ id: worker._id, name: worker.name, workerCode: worker.workerCode, pin: '' })}>{t(lang, 'edit')}</button>
-                  <button type="button" className={worker.active ? 'danger-soft' : 'success-soft'} onClick={() => void toggleWorker(worker)}>{worker.active ? t(lang, 'disable') : t(lang, 'enable')}</button>
+                  <button type="button" onClick={() => setWorkerDraft({ id: worker._id, name: worker.name, pin: '' })}>{t(lang, 'edit')}</button>
+                  <button type="button" className={worker.active ? 'danger-soft' : 'success-soft'} onClick={() => void toggleWorker(worker)}>
+                    {worker.active ? t(lang, 'disable') : t(lang, 'enable')}
+                  </button>
                 </div>
               </div>
             ))}
@@ -621,6 +643,7 @@ function Admin({ lang, setLang, logout }: SharedProps) {
               {siteDraft.id && <button type="button" onClick={() => setSiteDraft({ name: '' })}>{t(lang, 'cancel')}</button>}
             </div>
           </form>
+
           <div className="manage-list">
             {sites.map((site) => (
               <div className="manage-row" key={site._id}>
@@ -628,7 +651,9 @@ function Admin({ lang, setLang, logout }: SharedProps) {
                 <StatusBadge active={site.active} lang={lang} />
                 <div className="button-row">
                   <button type="button" onClick={() => setSiteDraft({ id: site._id, name: site.name })}>{t(lang, 'edit')}</button>
-                  <button type="button" className={site.active ? 'danger-soft' : 'success-soft'} onClick={() => void toggleSite(site)}>{site.active ? t(lang, 'disable') : t(lang, 'enable')}</button>
+                  <button type="button" className={site.active ? 'danger-soft' : 'success-soft'} onClick={() => void toggleSite(site)}>
+                    {site.active ? t(lang, 'disable') : t(lang, 'enable')}
+                  </button>
                 </div>
               </div>
             ))}
@@ -642,16 +667,19 @@ function Admin({ lang, setLang, logout }: SharedProps) {
             <div className="section-heading">
               <div>
                 <h2>{t(lang, 'editEntry')}</h2>
-                <p className="muted">{editingEntry.workerName} · {editingEntry.workerCode}</p>
+                <p className="muted">{editingEntry.workerName}</p>
               </div>
               <button type="button" className="icon-button" onClick={() => setEditingEntry(null)}>×</button>
             </div>
+
             <label>{t(lang, 'date')}</label>
             <input type="date" max={today} value={entryDraft.date} onChange={(event) => setEntryDraft((current) => ({ ...current, date: event.target.value }))} required />
+
             <label>{t(lang, 'workSite')}</label>
             <select value={entryDraft.site} onChange={(event) => setEntryDraft((current) => ({ ...current, site: event.target.value }))} required>
               {sites.map((site) => <option key={site._id} value={site._id}>{site.name}{site.active ? '' : ` (${t(lang, 'disabled')})`}</option>)}
             </select>
+
             {!isSunday(entryDraft.date) ? (
               <div className="two">
                 <div>
@@ -664,6 +692,7 @@ function Admin({ lang, setLang, logout }: SharedProps) {
                 </div>
               </div>
             ) : <Alert kind="info">{t(lang, 'sundayNote')}</Alert>}
+
             <div className="modal-actions">
               <button type="button" onClick={() => setEditingEntry(null)}>{t(lang, 'cancel')}</button>
               <button className="primary compact" type="submit" disabled={saving}>{saving ? t(lang, 'saving') : t(lang, 'save')}</button>
@@ -695,7 +724,7 @@ function AdminEntriesTable({ entries, lang, onEdit }: { entries: Entry[]; lang: 
         <tbody>
           {entries.map((entry) => (
             <tr key={entry._id}>
-              <td><strong>{entry.workerName}</strong><small>{entry.workerCode}</small></td>
+              <td><strong>{entry.workerName}</strong></td>
               <td>{entry.date}</td>
               <td>{entry.siteName}</td>
               <td>{entry.start || '—'}</td>
