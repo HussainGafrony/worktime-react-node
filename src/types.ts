@@ -10,7 +10,6 @@ export type Site = {
 export type Worker = {
   _id: string;
   name: string;
-  workerCode: string;
   active: boolean;
 };
 
@@ -18,7 +17,6 @@ export type Entry = {
   _id: string;
   workerId: string;
   workerName: string;
-  workerCode?: string;
   workerActive?: boolean;
   date: string;
   site: string;
