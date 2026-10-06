@@ -13,6 +13,7 @@ app.use(express.json({ limit: '32kb' }));
 type Role = 'admin' | 'worker';
 type AuthClaims = JwtPayload & { role: Role; id: string };
 type AuthenticatedRequest = Request & { user: AuthClaims };
+type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<unknown> | unknown;
 
 class AppError extends Error {
   constructor(
@@ -23,6 +24,12 @@ class AppError extends Error {
     super(message);
     this.name = 'AppError';
   }
+}
+
+function route(handler: AsyncHandler) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
 }
 
 function text(value: unknown) {
@@ -43,6 +50,14 @@ function siteNameKey(value: unknown) {
 
 function validId(value: unknown): value is string {
   return typeof value === 'string' && mongoose.isValidObjectId(value);
+}
+
+function objectId(value: string) {
+  return new mongoose.Types.ObjectId(value);
+}
+
+function fail(res: Response, status: number, code: string, error: string) {
+  return res.status(status).json({ code, error });
 }
 
 function isValidDate(value: string) {
@@ -94,8 +109,8 @@ function hoursFor(date: string, start?: string | null, end?: string | null) {
   const overtimeMinutes = Math.max(0, totalMinutes - regularMinutes);
 
   return {
-    start,
-    end,
+    start: start ?? null,
+    end: end ?? null,
     regular: Number((regularMinutes / 60).toFixed(2)),
     overtime: Number((overtimeMinutes / 60).toFixed(2))
   };
@@ -113,8 +128,13 @@ function workerPinKey(pin: string) {
     .digest('hex');
 }
 
-function fail(res: Response, status: number, code: string, error: string) {
-  return res.status(status).json({ code, error });
+function validateDate(date: string) {
+  if (!isValidDate(date)) {
+    throw new AppError(400, 'INVALID_DATE', 'Please choose a valid date.');
+  }
+  if (date > todayInAthens()) {
+    throw new AppError(400, 'FUTURE_DATE', 'Future dates are not allowed.');
+  }
 }
 
 async function authenticate(req: Request, res: Response, next: NextFunction) {
@@ -135,16 +155,16 @@ async function authenticate(req: Request, res: Response, next: NextFunction) {
     }
 
     await connectDatabase();
-    const accountExists = decoded.role === 'admin'
+    const activeAccount = decoded.role === 'admin'
       ? await Admin.exists({ _id: decoded.id, active: true })
       : await Worker.exists({ _id: decoded.id, active: true });
 
-    if (!accountExists) {
+    if (!activeAccount) {
       return fail(res, 401, 'AUTH_REQUIRED', 'Please sign in again.');
     }
 
     (req as AuthenticatedRequest).user = decoded as AuthClaims;
-    next();
+    return next();
   } catch {
     return fail(res, 401, 'AUTH_REQUIRED', 'Please sign in again.');
   }
@@ -154,16 +174,7 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if ((req as AuthenticatedRequest).user.role !== 'admin') {
     return fail(res, 403, 'ADMIN_ONLY', 'Administrator access is required.');
   }
-  next();
-}
-
-function validateDate(date: string) {
-  if (!isValidDate(date)) {
-    throw new AppError(400, 'INVALID_DATE', 'Please choose a valid date.');
-  }
-  if (date > todayInAthens()) {
-    throw new AppError(400, 'FUTURE_DATE', 'Future dates are not allowed.');
-  }
+  return next();
 }
 
 async function ensureSite(siteId: string, mustBeActive: boolean) {
@@ -196,8 +207,9 @@ async function bootstrapOrLoginAdmin(email: string, password: string) {
         passwordHash: await bcrypt.hash(configuredPassword, 12),
         active: true
       });
-    } catch (error: any) {
-      if (error?.code !== 11000) throw error;
+    } catch (error: unknown) {
+      const mongoError = error as { code?: number };
+      if (mongoError.code !== 11000) throw error;
     }
   }
 
@@ -237,17 +249,12 @@ async function listEntries(query: Record<string, unknown>, limit: number) {
   }));
 }
 
-app.get('/api/health', async (_req, res) => {
-  try {
-    await connectDatabase();
-    return res.json({ ok: true, database: 'connected' });
-  } catch (error) {
-    console.error(error);
-    return fail(res, 503, 'DATABASE_UNAVAILABLE', 'Database connection failed.');
-  }
-});
+app.get('/api/health', route(async (_req, res) => {
+  await connectDatabase();
+  return res.json({ ok: true, database: 'connected' });
+}));
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', route(async (req, res) => {
   await connectDatabase();
   const body = req.body || {};
 
@@ -280,22 +287,22 @@ app.post('/api/auth/login', async (req, res) => {
     role: 'worker',
     token: jwt.sign({ role: 'worker', id: String(worker._id) }, jwtSecret(), { expiresIn: '30d' })
   });
-});
+}));
 
-app.get('/api/sites', authenticate, async (_req, res) => {
+app.get('/api/sites', authenticate, route(async (_req, res) => {
   return res.json(
     await Site.find({ active: true }).select('name active').sort({ name: 1 }).lean()
   );
-});
+}));
 
-app.get('/api/entries', authenticate, async (req, res) => {
+app.get('/api/entries', authenticate, route(async (req, res) => {
   const user = (req as AuthenticatedRequest).user;
-  const query = user.role === 'worker' ? { workerId: user.id } : {};
+  const query = user.role === 'worker' ? { workerId: objectId(user.id) } : {};
   const limit = user.role === 'worker' ? 30 : 5000;
   return res.json(await listEntries(query, limit));
-});
+}));
 
-app.post('/api/entries', authenticate, async (req, res) => {
+app.post('/api/entries', authenticate, route(async (req, res) => {
   const user = (req as AuthenticatedRequest).user;
   if (user.role !== 'worker') {
     return fail(res, 403, 'WORKER_ONLY', 'Worker access is required.');
@@ -306,23 +313,23 @@ app.post('/api/entries', authenticate, async (req, res) => {
   validateDate(date);
   await ensureSite(site, true);
 
-  const existing = await Entry.findOne({ workerId: user.id, date }).select('_id').lean();
-  if (existing) {
+  const workerId = objectId(user.id);
+  if (await Entry.exists({ workerId, date })) {
     return fail(res, 409, 'ENTRY_EXISTS', 'You already submitted an entry for this date. Ask the administrator to correct it if needed.');
   }
 
   const calculated = hoursFor(date, text(req.body?.start) || null, text(req.body?.end) || null);
-  const entry = await Entry.create({ workerId: user.id, date, site, ...calculated });
-  return res.status(201).json({ _id: entry._id });
-});
+  const entry = await Entry.create({ workerId, date, site: objectId(site), ...calculated });
+  return res.status(201).json({ _id: String(entry._id) });
+}));
 
-app.get('/api/admin/workers', authenticate, requireAdmin, async (_req, res) => {
+app.get('/api/admin/workers', authenticate, requireAdmin, route(async (_req, res) => {
   return res.json(
     await Worker.find().select('name active').sort({ active: -1, name: 1 }).lean()
   );
-});
+}));
 
-app.post('/api/admin/workers', authenticate, requireAdmin, async (req, res) => {
+app.post('/api/admin/workers', authenticate, requireAdmin, route(async (req, res) => {
   const name = text(req.body?.name);
   const pin = String(req.body?.pin ?? '');
 
@@ -345,10 +352,10 @@ app.post('/api/admin/workers', authenticate, requireAdmin, async (req, res) => {
     active: true
   });
 
-  return res.status(201).json({ _id: worker._id, name: worker.name, active: worker.active });
-});
+  return res.status(201).json({ _id: String(worker._id), name: worker.name, active: worker.active });
+}));
 
-app.patch('/api/admin/workers/:id', authenticate, requireAdmin, async (req, res) => {
+app.patch('/api/admin/workers/:id', authenticate, requireAdmin, route(async (req, res) => {
   if (!validId(req.params.id)) return fail(res, 400, 'INVALID_WORKER', 'Worker was not found.');
 
   const worker = await Worker.findById(req.params.id).select('+pinHash +pinKey');
@@ -367,28 +374,26 @@ app.patch('/api/admin/workers/:id', authenticate, requireAdmin, async (req, res)
     if (!/^\d{4,12}$/.test(pin)) {
       return fail(res, 400, 'INVALID_PIN', 'PIN must contain 4–12 digits.');
     }
-
     const pinKey = workerPinKey(pin);
     if (await Worker.exists({ pinKey, _id: { $ne: worker._id } })) {
       return fail(res, 409, 'PIN_EXISTS', 'This PIN is already assigned to another worker.');
     }
-
     worker.pinHash = await bcrypt.hash(pin, 12);
     worker.pinKey = pinKey;
   }
 
   if (typeof req.body?.active === 'boolean') worker.active = req.body.active;
   await worker.save();
-  return res.json({ _id: worker._id, name: worker.name, active: worker.active });
-});
+  return res.json({ _id: String(worker._id), name: worker.name, active: worker.active });
+}));
 
-app.get('/api/admin/sites', authenticate, requireAdmin, async (_req, res) => {
+app.get('/api/admin/sites', authenticate, requireAdmin, route(async (_req, res) => {
   return res.json(
     await Site.find().select('name active').sort({ active: -1, name: 1 }).lean()
   );
-});
+}));
 
-app.post('/api/admin/sites', authenticate, requireAdmin, async (req, res) => {
+app.post('/api/admin/sites', authenticate, requireAdmin, route(async (req, res) => {
   const name = normalizeSiteName(req.body?.name);
   if (name.length < 2 || name.length > 80) {
     return fail(res, 400, 'INVALID_SITE_NAME', 'Site name must be between 2 and 80 characters.');
@@ -399,14 +404,13 @@ app.post('/api/admin/sites', authenticate, requireAdmin, async (req, res) => {
     return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
   }
 
-  const site = await Site.create({ name, nameKey, active: true });
-  return res.status(201).json({ _id: site._id, name: site.name, active: site.active });
-});
+  return res.status(201).json(await Site.create({ name, nameKey, active: true }));
+}));
 
-app.patch('/api/admin/sites/:id', authenticate, requireAdmin, async (req, res) => {
+app.patch('/api/admin/sites/:id', authenticate, requireAdmin, route(async (req, res) => {
   if (!validId(req.params.id)) return fail(res, 400, 'INVALID_SITE', 'Site was not found.');
 
-  const site = await Site.findById(req.params.id).select('+nameKey');
+  const site = await Site.findById(req.params.id);
   if (!site) return fail(res, 404, 'SITE_NOT_FOUND', 'Site was not found.');
 
   if (req.body?.name !== undefined) {
@@ -414,7 +418,6 @@ app.patch('/api/admin/sites/:id', authenticate, requireAdmin, async (req, res) =
     if (name.length < 2 || name.length > 80) {
       return fail(res, 400, 'INVALID_SITE_NAME', 'Site name must be between 2 and 80 characters.');
     }
-
     const nameKey = siteNameKey(name);
     if (await Site.exists({ nameKey, _id: { $ne: site._id } })) {
       return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
@@ -425,15 +428,13 @@ app.patch('/api/admin/sites/:id', authenticate, requireAdmin, async (req, res) =
 
   if (typeof req.body?.active === 'boolean') site.active = req.body.active;
   await site.save();
-  return res.json({ _id: site._id, name: site.name, active: site.active });
-});
+  return res.json({ _id: String(site._id), name: site.name, active: site.active });
+}));
 
-app.patch('/api/admin/entries/:id', authenticate, requireAdmin, async (req, res) => {
-  if (!validId(req.params.id)) {
-    return fail(res, 400, 'INVALID_ENTRY', 'Timesheet entry was not found.');
-  }
+app.patch('/api/admin/entries/:id', authenticate, requireAdmin, route(async (req, res) => {
+  if (!validId(req.params.id)) return fail(res, 400, 'INVALID_ENTRY', 'Timesheet entry was not found.');
 
-  const entry = await Entry.findById(req.params.id);
+  const entry: any = await Entry.findById(req.params.id);
   if (!entry) return fail(res, 404, 'ENTRY_NOT_FOUND', 'Timesheet entry was not found.');
 
   const date = req.body?.date === undefined ? entry.date : text(req.body.date);
@@ -450,7 +451,7 @@ app.patch('/api/admin/entries/:id', authenticate, requireAdmin, async (req, res)
   const calculated = hoursFor(date, start, end);
 
   entry.date = date;
-  entry.site = new mongoose.Types.ObjectId(site);
+  entry.site = objectId(site);
   entry.start = calculated.start;
   entry.end = calculated.end;
   entry.regular = calculated.regular;
@@ -459,19 +460,15 @@ app.patch('/api/admin/entries/:id', authenticate, requireAdmin, async (req, res)
 
   const [updated] = await listEntries({ _id: entry._id }, 1);
   return res.json(updated);
-});
+}));
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (error instanceof AppError) {
     return fail(res, error.status, error.code, error.message);
   }
 
-  const mongoError = error as {
-    code?: number;
-    keyPattern?: Record<string, number>;
-  };
-
-  if (mongoError?.code === 11000) {
+  const mongoError = error as { code?: number; keyPattern?: Record<string, unknown> };
+  if (mongoError.code === 11000) {
     if (mongoError.keyPattern?.pinKey) {
       return fail(res, 409, 'PIN_EXISTS', 'This PIN is already assigned to another worker.');
     }
