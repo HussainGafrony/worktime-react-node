@@ -1,4 +1,4 @@
-import mongoose, { model, models, Schema, type Model } from 'mongoose';
+import { model, models, Schema, type Model, type Types } from 'mongoose';
 
 export interface AdminRecord {
   email: string;
@@ -9,19 +9,20 @@ export interface AdminRecord {
 export interface WorkerRecord {
   name: string;
   pinHash: string;
-  pinKey?: string;
+  pinKey: string;
   active: boolean;
 }
 
 export interface SiteRecord {
   name: string;
+  nameKey: string;
   active: boolean;
 }
 
 export interface EntryRecord {
-  workerId: string;
+  workerId: Types.ObjectId;
   date: string;
-  site: string;
+  site: Types.ObjectId;
   start: string | null;
   end: string | null;
   regular: number;
@@ -56,11 +57,16 @@ const workerSchema = new Schema<WorkerRecord>({
     maxlength: 80
   },
   pinHash: { type: String, required: true, select: false },
-  // Optional only for compatibility with workers created before PIN-only login.
-  // database.ts creates a sparse unique index and migrates the value after login/PIN reset.
-  pinKey: { type: String, select: false, minlength: 64, maxlength: 64 },
+  pinKey: {
+    type: String,
+    required: true,
+    unique: true,
+    select: false,
+    minlength: 64,
+    maxlength: 64
+  },
   active: { type: Boolean, default: true, required: true }
-}, { ...commonOptions, autoIndex: false });
+}, commonOptions);
 
 const siteSchema = new Schema<SiteRecord>({
   name: {
@@ -70,29 +76,43 @@ const siteSchema = new Schema<SiteRecord>({
     minlength: 2,
     maxlength: 80
   },
+  nameKey: {
+    type: String,
+    required: true,
+    unique: true,
+    select: false,
+    maxlength: 80
+  },
   active: { type: Boolean, default: true, required: true }
 }, commonOptions);
 
 const entrySchema = new Schema<EntryRecord>({
-  workerId: { type: String, required: true, index: true },
+  workerId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Worker',
+    required: true,
+    index: true
+  },
   date: {
     type: String,
     required: true,
     index: true,
     match: /^\d{4}-\d{2}-\d{2}$/
   },
-  site: { type: String, required: true },
+  site: {
+    type: Schema.Types.ObjectId,
+    ref: 'Site',
+    required: true
+  },
   start: { type: String, default: null, match: /^\d{2}:\d{2}$/ },
   end: { type: String, default: null, match: /^\d{2}:\d{2}$/ },
   regular: { type: Number, required: true, default: 0, min: 0 },
   overtime: { type: Number, required: true, default: 0, min: 0 }
 }, commonOptions);
 
-entrySchema.index({ workerId: 1, date: 1 }, { unique: true, name: 'workerId_1_date_1' });
+entrySchema.index({ workerId: 1, date: 1 }, { unique: true });
 
 export const Admin = (models.Admin as Model<AdminRecord> | undefined) ?? model<AdminRecord>('Admin', adminSchema);
 export const Worker = (models.Worker as Model<WorkerRecord> | undefined) ?? model<WorkerRecord>('Worker', workerSchema);
 export const Site = (models.Site as Model<SiteRecord> | undefined) ?? model<SiteRecord>('Site', siteSchema);
 export const Entry = (models.Entry as Model<EntryRecord> | undefined) ?? model<EntryRecord>('Entry', entrySchema);
-
-export { mongoose };
