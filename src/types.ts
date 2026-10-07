@@ -26,5 +26,6 @@ export type Entry = {
   regular: number;
   overtime: number;
   submittedAt?: string;
-  isLate?: boolean;
+  isLate: boolean;
+  adminNote?: string;
 };
