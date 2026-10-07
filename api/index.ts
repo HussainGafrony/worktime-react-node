@@ -75,23 +75,56 @@ const Site = (mongoose.models.Site as mongoose.Model<SiteRecord> | undefined) ??
 const Entry = (mongoose.models.Entry as mongoose.Model<EntryRecord> | undefined) ?? mongoose.model<EntryRecord>('Entry', entrySchema);
 
 let connectionPromise: Promise<typeof mongoose> | null = null;
+let adminBootstrapPromise: Promise<void> | null = null;
 
-async function connectDatabase() {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) throw new Error('MONGODB_URI is not configured');
-  if (mongoose.connection.readyState === 1) return;
+async function ensureInitialAdmin() {
+  if (await Admin.exists({})) return;
 
-  if (!connectionPromise) {
-    connectionPromise = mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 10000,
-      maxPoolSize: 10
-    }).catch((error) => {
-      connectionPromise = null;
+  if (!adminBootstrapPromise) {
+    adminBootstrapPromise = (async () => {
+      if (await Admin.exists({})) return;
+
+      const email = normalizeEmail(process.env.ADMIN_EMAIL);
+      const password = String(process.env.ADMIN_PASSWORD ?? '');
+      if (!email || !password) {
+        throw new AppError(500, 'ADMIN_NOT_CONFIGURED', 'Initial admin is not configured.');
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      try {
+        await Admin.create({ email, passwordHash, active: true });
+      } catch (error: unknown) {
+        const mongoError = error as { code?: number };
+        if (mongoError.code !== 11000) throw error;
+      }
+    })().catch((error) => {
+      adminBootstrapPromise = null;
       throw error;
     });
   }
 
-  await connectionPromise;
+  await adminBootstrapPromise;
+}
+
+async function connectDatabase() {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error('MONGODB_URI is not configured');
+
+  if (mongoose.connection.readyState !== 1) {
+    if (!connectionPromise) {
+      connectionPromise = mongoose.connect(uri, {
+        serverSelectionTimeoutMS: 10000,
+        maxPoolSize: 10
+      }).catch((error) => {
+        connectionPromise = null;
+        throw error;
+      });
+    }
+
+    await connectionPromise;
+  }
+
+  await ensureInitialAdmin();
 }
 
 function route(handler: AsyncHandler) {
@@ -243,27 +276,7 @@ async function ensureSite(siteId: string, mustBeActive: boolean) {
   }
 }
 
-async function bootstrapOrLoginAdmin(email: string, password: string) {
-  const hasAdmin = await Admin.exists({});
-
-  if (!hasAdmin) {
-    const configuredEmail = normalizeEmail(process.env.ADMIN_EMAIL);
-    const configuredPassword = process.env.ADMIN_PASSWORD || '';
-    if (!configuredEmail || !configuredPassword) throw new AppError(500, 'ADMIN_NOT_CONFIGURED', 'Admin login is not configured.');
-    if (email !== configuredEmail || password !== configuredPassword) throw new AppError(401, 'INVALID_CREDENTIALS', 'Incorrect email or password.');
-
-    try {
-      return await Admin.create({
-        email: configuredEmail,
-        passwordHash: await bcrypt.hash(configuredPassword, 12),
-        active: true
-      });
-    } catch (error: unknown) {
-      const mongoError = error as { code?: number };
-      if (mongoError.code !== 11000) throw error;
-    }
-  }
-
+async function loginAdmin(email: string, password: string) {
   const account = await Admin.findOne({ email, active: true }).select('+passwordHash');
   if (!account || !(await bcrypt.compare(password, account.passwordHash))) {
     throw new AppError(401, 'INVALID_CREDENTIALS', 'Incorrect email or password.');
@@ -314,7 +327,7 @@ app.post('/api/auth/login', route(async (req, res) => {
     const password = String(body.password ?? '');
     if (!email || !password) return fail(res, 400, 'LOGIN_FIELDS_REQUIRED', 'Email and password are required.');
 
-    const account = await bootstrapOrLoginAdmin(email, password);
+    const account = await loginAdmin(email, password);
     return res.json({
       role: 'admin',
       token: jwt.sign({ role: 'admin', id: String(account._id) }, jwtSecret(), { expiresIn: '12h' })
