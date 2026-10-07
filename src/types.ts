@@ -25,4 +25,6 @@ export type Entry = {
   end?: string | null;
   regular: number;
   overtime: number;
+  submittedAt?: string;
+  isLate?: boolean;
 };
