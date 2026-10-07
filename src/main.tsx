@@ -14,377 +14,94 @@ const today = localToday();
 
 const localText = {
   en: {
-    workerLink: 'Worker link',
-    adminLink: 'Accountant link',
-    signedInAs: 'Signed in as',
-    status: 'Status',
-    late: 'Late',
-    onTime: 'On time',
-    submittedAt: 'Submitted at',
-    adminNote: 'Accountant note',
-    note: 'Note',
-    saveNote: 'Save note',
-    totalRegular: 'Total regular hours',
-    totalOvertime: 'Total overtime hours',
-    lateSubmissions: 'Late submissions',
-    lateSubmissionList: 'Late submission list',
-    hoursByWorker: 'Hours by worker',
-    total: 'Total',
-    entries: 'Entries',
-    noLateRows: 'No late submissions in the current filters.'
+    workerLink: 'Worker link', adminLink: 'Accountant link', signedInAs: 'Signed in as', status: 'Status', late: 'Late', onTime: 'On time', submittedAt: 'Submitted at', adminNote: 'Accountant note', note: 'Note', saveNote: 'Save note', totalRegular: 'Total regular hours', totalOvertime: 'Total overtime hours', lateSubmissions: 'Late submissions', lateSubmissionList: 'Late submission list', hoursByWorker: 'Hours by worker', total: 'Total', entries: 'Entries', noLateRows: 'No late submissions in the current filters.', pageNotFound: 'Page not found', wrongPortal: 'You are signed in with a different account type. Please logout first.'
   },
   el: {
-    workerLink: 'Σύνδεσμος εργαζομένου',
-    adminLink: 'Σύνδεσμος λογιστή',
-    signedInAs: 'Συνδεδεμένος ως',
-    status: 'Κατάσταση',
-    late: 'Καθυστερημένη',
-    onTime: 'Εμπρόθεσμη',
-    submittedAt: 'Υποβλήθηκε στις',
-    adminNote: 'Σημείωση λογιστή',
-    note: 'Σημείωση',
-    saveNote: 'Αποθήκευση σημείωσης',
-    totalRegular: 'Σύνολο κανονικών ωρών',
-    totalOvertime: 'Σύνολο υπερωριών',
-    lateSubmissions: 'Καθυστερημένες υποβολές',
-    lateSubmissionList: 'Λίστα καθυστερημένων υποβολών',
-    hoursByWorker: 'Ώρες ανά εργαζόμενο',
-    total: 'Σύνολο',
-    entries: 'Καταχωρήσεις',
-    noLateRows: 'Δεν υπάρχουν καθυστερημένες υποβολές με τα τρέχοντα φίλτρα.'
+    workerLink: 'Σύνδεσμος εργαζομένου', adminLink: 'Σύνδεσμος λογιστή', signedInAs: 'Συνδεδεμένος ως', status: 'Κατάσταση', late: 'Καθυστερημένη', onTime: 'Εμπρόθεσμη', submittedAt: 'Υποβλήθηκε στις', adminNote: 'Σημείωση λογιστή', note: 'Σημείωση', saveNote: 'Αποθήκευση σημείωσης', totalRegular: 'Σύνολο κανονικών ωρών', totalOvertime: 'Σύνολο υπερωριών', lateSubmissions: 'Καθυστερημένες υποβολές', lateSubmissionList: 'Λίστα καθυστερημένων υποβολών', hoursByWorker: 'Ώρες ανά εργαζόμενο', total: 'Σύνολο', entries: 'Καταχωρήσεις', noLateRows: 'Δεν υπάρχουν καθυστερημένες υποβολές με τα τρέχοντα φίλτρα.', pageNotFound: 'Η σελίδα δεν βρέθηκε', wrongPortal: 'Έχετε συνδεθεί με διαφορετικό τύπο λογαριασμού. Αποσυνδεθείτε πρώτα.'
   }
 } as const;
 
-function tt(lang: Lang, key: keyof typeof localText.en) {
-  return localText[lang][key];
-}
-
-function isSunday(date: string) {
-  return new Date(`${date}T12:00:00`).getDay() === 0;
-}
-
-function isoWeekKey(dateString: string) {
-  const date = new Date(`${dateString}T12:00:00Z`);
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - day);
-  const year = date.getUTCFullYear();
-  const yearStart = new Date(Date.UTC(year, 0, 1));
-  const week = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  return `${year}-W${String(week).padStart(2, '0')}`;
-}
-
-function formatHours(value: number) {
-  return `${Number(value || 0).toFixed(2).replace(/\.00$/, '')}h`;
-}
-
-function formatDateTime(value?: string | null) {
-  return value ? new Date(value).toLocaleString() : '—';
-}
-
-function escapeCsv(value: unknown) {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
-}
-
-function escapeHtml(value: unknown) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-function downloadFile(content: BlobPart, type: string, filename: string) {
-  const url = URL.createObjectURL(new Blob([content], { type }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function makeTimeOptions() {
-  const rows: string[] = [];
-  for (let hour = 0; hour <= 23; hour += 1) {
-    rows.push(`${String(hour).padStart(2, '0')}:00`);
-    rows.push(`${String(hour).padStart(2, '0')}:30`);
-  }
-  return rows;
-}
-
+function tt(lang: Lang, key: keyof typeof localText.en) { return localText[lang][key]; }
+function isSunday(date: string) { return new Date(`${date}T12:00:00`).getDay() === 0; }
+function formatHours(value: number) { return `${Number(value || 0).toFixed(2).replace(/\.00$/, '')}h`; }
+function formatDateTime(value?: string | null) { return value ? new Date(value).toLocaleString() : '—'; }
+function escapeCsv(value: unknown) { return `"${String(value ?? '').replace(/"/g, '""')}"`; }
+function escapeHtml(value: unknown) { return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
+function downloadFile(content: BlobPart, type: string, filename: string) { const url = URL.createObjectURL(new Blob([content], { type })); const link = document.createElement('a'); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url); }
+function makeTimeOptions() { const rows: string[] = []; for (let hour = 0; hour <= 23; hour += 1) { rows.push(`${String(hour).padStart(2, '0')}:00`); rows.push(`${String(hour).padStart(2, '0')}:30`); } return rows; }
 const halfHourOptions = makeTimeOptions();
+function isoWeekKey(dateString: string) { const date = new Date(`${dateString}T12:00:00Z`); const day = date.getUTCDay() || 7; date.setUTCDate(date.getUTCDate() + 4 - day); const year = date.getUTCFullYear(); const yearStart = new Date(Date.UTC(year, 0, 1)); const week = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7); return `${year}-W${String(week).padStart(2, '0')}`; }
+
+function portalFromPath(): Role | '' { const path = window.location.pathname.replace(/\/+$/, '') || '/'; if (path === '/worker') return 'worker'; if (path === '/admin') return 'admin'; return ''; }
 
 function App() {
-  const initialPortal = window.location.pathname.startsWith('/admin') ? 'admin' : window.location.pathname.startsWith('/worker') ? 'worker' : '';
+  const portal = portalFromPath();
   const [role, setRole] = useState<Role | ''>((localStorage.getItem('role') as Role) || '');
   const [name, setName] = useState(localStorage.getItem('displayName') || '');
   const [lang, setLangState] = useState<Lang>((localStorage.getItem('lang') as Lang) || 'en');
-  const [portal, setPortal] = useState<Role | ''>((initialPortal as Role | '') || role);
+  const setLang = (next: Lang) => { localStorage.setItem('lang', next); setLangState(next); };
+  const login = (nextRole: Role, token: string, displayName: string) => { localStorage.setItem('role', nextRole); localStorage.setItem('token', token); localStorage.setItem('displayName', displayName); setRole(nextRole); setName(displayName); window.history.replaceState(null, '', nextRole === 'admin' ? '/admin' : '/worker'); };
+  const logout = () => { localStorage.removeItem('role'); localStorage.removeItem('token'); localStorage.removeItem('displayName'); setRole(''); setName(''); };
 
-  const setLang = (next: Lang) => {
-    localStorage.setItem('lang', next);
-    setLangState(next);
-  };
-
-  const login = (nextRole: Role, token: string, displayName: string) => {
-    localStorage.setItem('role', nextRole);
-    localStorage.setItem('token', token);
-    localStorage.setItem('displayName', displayName);
-    setRole(nextRole);
-    setName(displayName);
-    setPortal(nextRole);
-    window.history.replaceState(null, '', nextRole === 'admin' ? '/admin' : '/worker');
-  };
-
-  const logout = () => {
-    localStorage.removeItem('role');
-    localStorage.removeItem('token');
-    localStorage.removeItem('displayName');
-    setRole('');
-    setName('');
-  };
-
-  if (!role) return <Login lang={lang} setLang={setLang} portal={(portal || 'worker') as Role} setPortal={setPortal} onLogin={login} />;
-  return role === 'admin'
-    ? <Admin lang={lang} setLang={setLang} logout={logout} name={name} />
-    : <WorkerView lang={lang} setLang={setLang} logout={logout} name={name} />;
+  if (!portal) return <NotFound lang={lang} setLang={setLang} />;
+  if (role && role !== portal) return <WrongPortal lang={lang} setLang={setLang} logout={logout} />;
+  if (!role) return <Login lang={lang} setLang={setLang} portal={portal} onLogin={login} />;
+  return role === 'admin' ? <Admin lang={lang} setLang={setLang} logout={logout} name={name} /> : <WorkerView lang={lang} setLang={setLang} logout={logout} name={name} />;
 }
 
 type SharedProps = { lang: Lang; setLang: (lang: Lang) => void; logout: () => void; name: string };
-
 type AdminTab = 'timesheets' | 'workers' | 'sites';
 type Filters = { workerId: string; site: string; date: string; week: string; month: string };
 
-function LanguageToggle({ lang, setLang }: { lang: Lang; setLang: (lang: Lang) => void }) {
-  return (
-    <div className="language-toggle">
-      <button type="button" className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>EN</button>
-      <button type="button" className={lang === 'el' ? 'active' : ''} onClick={() => setLang('el')}>ΕΛ</button>
-    </div>
-  );
-}
+function LanguageToggle({ lang, setLang }: { lang: Lang; setLang: (lang: Lang) => void }) { return <div className="language-toggle"><button type="button" className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>EN</button><button type="button" className={lang === 'el' ? 'active' : ''} onClick={() => setLang('el')}>ΕΛ</button></div>; }
+function Header({ title, lang, setLang, logout, name }: SharedProps & { title: string }) { return <section className="hero row"><div className="brand-block"><b>WorkTime</b><span>{title}</span><span>{tt(lang, 'signedInAs')}: {name}</span></div><div className="header-actions"><LanguageToggle lang={lang} setLang={setLang} /><button type="button" className="ghost-on-dark" onClick={logout}>{t(lang, 'logout')}</button></div></section>; }
+function Alert({ kind, children }: { kind: 'error' | 'success' | 'info'; children: React.ReactNode }) { return <p className={`alert alert-${kind}`}>{children}</p>; }
+function Stat({ value, label, onClick }: { value: number | string; label: string; onClick?: () => void }) { return <div onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}><b>{value}</b><span>{label}</span></div>; }
+function StatusBadge({ active, lang }: { active: boolean; lang: Lang }) { return <span className={`status-badge ${active ? 'status-active' : 'status-disabled'}`}>{active ? t(lang, 'active') : t(lang, 'disabled')}</span>; }
+function LateBadge({ isLate, lang }: { isLate: boolean; lang: Lang }) { return <span className={`status-badge ${isLate ? 'status-disabled' : 'status-active'}`}>{isLate ? tt(lang, 'late') : tt(lang, 'onTime')}</span>; }
+function NotFound({ lang, setLang }: { lang: Lang; setLang: (lang: Lang) => void }) { return <main className="shell login-shell"><section className="hero login-hero"><div className="login-hero-top"><div className="brand-block"><b>WorkTime</b><span>404</span></div><LanguageToggle lang={lang} setLang={setLang} /></div></section><section className="card"><h1>{tt(lang, 'pageNotFound')}</h1><p className="muted">/worker · /admin</p></section></main>; }
+function WrongPortal({ lang, setLang, logout }: { lang: Lang; setLang: (lang: Lang) => void; logout: () => void }) { return <main className="shell login-shell"><section className="hero login-hero"><div className="login-hero-top"><div className="brand-block"><b>WorkTime</b><span>{tt(lang, 'wrongPortal')}</span></div><LanguageToggle lang={lang} setLang={setLang} /></div></section><section className="card"><Alert kind="info">{tt(lang, 'wrongPortal')}</Alert><button className="primary" type="button" onClick={logout}>{t(lang, 'logout')}</button></section></main>; }
 
-function Header({ title, lang, setLang, logout, name }: SharedProps & { title: string }) {
-  return (
-    <section className="hero row">
-      <div className="brand-block">
-        <b>WorkTime</b>
-        <span>{title}</span>
-        <span>{tt(lang, 'signedInAs')}: {name}</span>
-      </div>
-      <div className="header-actions">
-        <LanguageToggle lang={lang} setLang={setLang} />
-        <button type="button" className="ghost-on-dark" onClick={logout}>{t(lang, 'logout')}</button>
-      </div>
-    </section>
-  );
-}
-
-function Alert({ kind, children }: { kind: 'error' | 'success' | 'info'; children: React.ReactNode }) {
-  return <p className={`alert alert-${kind}`}>{children}</p>;
-}
-
-function Stat({ value, label, onClick }: { value: number | string; label: string; onClick?: () => void }) {
-  return <div onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}><b>{value}</b><span>{label}</span></div>;
-}
-
-function StatusBadge({ active, lang }: { active: boolean; lang: Lang }) {
-  return <span className={`status-badge ${active ? 'status-active' : 'status-disabled'}`}>{active ? t(lang, 'active') : t(lang, 'disabled')}</span>;
-}
-
-function LateBadge({ isLate, lang }: { isLate: boolean; lang: Lang }) {
-  return <span className={`status-badge ${isLate ? 'status-disabled' : 'status-active'}`}>{isLate ? tt(lang, 'late') : tt(lang, 'onTime')}</span>;
-}
-
-function Login({ lang, setLang, portal, setPortal, onLogin }: { lang: Lang; setLang: (lang: Lang) => void; portal: Role; setPortal: (role: Role) => void; onLogin: (role: Role, token: string, name: string) => void }) {
-  const [pin, setPin] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+function Login({ lang, setLang, portal, onLogin }: { lang: Lang; setLang: (lang: Lang) => void; portal: Role; onLogin: (role: Role, token: string, name: string) => void }) {
+  const [pin, setPin] = useState(''), [email, setEmail] = useState(''), [password, setPassword] = useState(''), [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const switchPortal = (next: Role) => {
-    setPortal(next);
-    setError('');
-    window.history.replaceState(null, '', next === 'admin' ? '/admin' : '/worker');
-  };
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const payload = portal === 'worker' ? { role: 'worker', pin } : { role: 'admin', email, password };
-      const result = await api<{ role: Role; token: string; name?: string }>('/auth/login', { method: 'POST', body: JSON.stringify(payload) });
-      onLogin(result.role, result.token, result.name || (portal === 'admin' ? email : t(lang, 'worker')));
-    } catch (err) {
-      setError(errorMessage(lang, err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <main className="shell login-shell">
-      <section className="hero login-hero">
-        <div className="login-hero-top"><div className="brand-block"><b>WorkTime</b><span>{t(lang, 'appSubtitle')}</span></div><LanguageToggle lang={lang} setLang={setLang} /></div>
-      </section>
-      <form className="card" onSubmit={submit}>
-        <div className="tabs">
-          <button type="button" className={portal === 'worker' ? 'active' : ''} onClick={() => switchPortal('worker')}>{tt(lang, 'workerLink')}</button>
-          <button type="button" className={portal === 'admin' ? 'active' : ''} onClick={() => switchPortal('admin')}>{tt(lang, 'adminLink')}</button>
-        </div>
-        <h1>{portal === 'worker' ? t(lang, 'workerLogin') : t(lang, 'adminLogin')}</h1>
-        {portal === 'worker' ? (
-          <><label>{t(lang, 'pin')}</label><input type="password" inputMode="numeric" autoComplete="current-password" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 12))} required /></>
-        ) : (
-          <><label>{t(lang, 'email')}</label><input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /><label>{t(lang, 'password')}</label><input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></>
-        )}
-        {error && <Alert kind="error">{error}</Alert>}
-        <button className="primary" type="submit" disabled={loading}>{loading ? t(lang, 'loading') : t(lang, 'login')}</button>
-        <p className="muted">{t(lang, 'loginHint')}</p>
-      </form>
-    </main>
-  );
+  const submit = async (event: FormEvent) => { event.preventDefault(); setError(''); setLoading(true); try { const payload = portal === 'worker' ? { role: 'worker', pin } : { role: 'admin', email, password }; const result = await api<{ role: Role; token: string; name?: string }>('/auth/login', { method: 'POST', body: JSON.stringify(payload) }); onLogin(result.role, result.token, result.name || (portal === 'admin' ? email : t(lang, 'worker'))); } catch (err) { setError(errorMessage(lang, err)); } finally { setLoading(false); } };
+  return <main className="shell login-shell"><section className="hero login-hero"><div className="login-hero-top"><div className="brand-block"><b>WorkTime</b><span>{portal === 'worker' ? tt(lang, 'workerLink') : tt(lang, 'adminLink')}</span></div><LanguageToggle lang={lang} setLang={setLang} /></div></section><form className="card" onSubmit={submit}><h1>{portal === 'worker' ? t(lang, 'workerLogin') : t(lang, 'adminLogin')}</h1>{portal === 'worker' ? <><label>{t(lang, 'pin')}</label><input type="password" inputMode="numeric" autoComplete="current-password" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 12))} required /></> : <><label>{t(lang, 'email')}</label><input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /><label>{t(lang, 'password')}</label><input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></>}{error && <Alert kind="error">{error}</Alert>}<button className="primary" type="submit" disabled={loading}>{loading ? t(lang, 'loading') : t(lang, 'login')}</button><p className="muted">{t(lang, 'loginHint')}</p></form></main>;
 }
 
 function WorkerView({ lang, setLang, logout, name }: SharedProps) {
-  const [date, setDate] = useState(today);
-  const [site, setSite] = useState('');
-  const [sites, setSites] = useState<Site[]>([]);
-  const [start, setStart] = useState('08:00');
-  const [end, setEnd] = useState('16:00');
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [date, setDate] = useState(today), [site, setSite] = useState(''), [sites, setSites] = useState<Site[]>([]), [start, setStart] = useState('08:00'), [end, setEnd] = useState('16:00'), [entries, setEntries] = useState<Entry[]>([]), [message, setMessage] = useState(''), [error, setError] = useState(''), [loading, setLoading] = useState(true), [saving, setSaving] = useState(false);
   const sunday = isSunday(date);
-
   const handleError = (err: unknown) => { if (err instanceof ApiError && err.code === 'AUTH_REQUIRED') logout(); setError(errorMessage(lang, err)); };
-  const load = async () => {
-    setLoading(true); setError('');
-    try { const [siteRows, entryRows] = await Promise.all([api<Site[]>('/sites'), api<Entry[]>('/entries')]); setSites(siteRows); setEntries(entryRows); }
-    catch (err) { handleError(err); }
-    finally { setLoading(false); }
-  };
+  const load = async () => { setLoading(true); setError(''); try { const [siteRows, entryRows] = await Promise.all([api<Site[]>('/sites'), api<Entry[]>('/entries')]); setSites(siteRows); setEntries(entryRows); } catch (err) { handleError(err); } finally { setLoading(false); } };
   useEffect(() => { void load(); }, []);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault(); setMessage(''); setError(''); setSaving(true);
-    try { await api('/entries', { method: 'POST', body: JSON.stringify({ date, site, start: sunday ? null : start, end: sunday ? null : end }) }); setMessage(t(lang, 'submitted')); await load(); }
-    catch (err) { handleError(err); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <main className="shell wide">
-      <Header title={t(lang, 'worker')} lang={lang} setLang={setLang} logout={logout} name={name} />
-      <form className="card" onSubmit={submit}>
-        <h2>{t(lang, 'newEntry')}</h2>
-        <div className="form-grid">
-          <div><label>{t(lang, 'date')}</label><input type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} required /></div>
-          <div><label>{t(lang, 'workSite')}</label><select value={site} onChange={(e) => setSite(e.target.value)} required><option value="">{t(lang, 'selectSite')}</option>{sites.map((row) => <option key={row._id} value={row._id}>{row.name}</option>)}</select></div>
-        </div>
-        {!sunday ? <div className="two"><div><label>{t(lang, 'start')}</label><select value={start} onChange={(e) => setStart(e.target.value)}>{halfHourOptions.map((v) => <option key={v}>{v}</option>)}</select></div><div><label>{t(lang, 'finish')}</label><select value={end} onChange={(e) => setEnd(e.target.value)}>{halfHourOptions.map((v) => <option key={v}>{v}</option>)}</select></div></div> : <Alert kind="info">{t(lang, 'sundayNote')}</Alert>}
-        {error && <Alert kind="error">{error}</Alert>}{message && <Alert kind="success">{message}</Alert>}
-        <button className="primary" type="submit" disabled={saving || loading}>{saving ? t(lang, 'saving') : t(lang, 'submit')}</button>
-      </form>
-      <section className="card"><h2>{t(lang, 'recentEntries')}</h2>{loading ? <p className="muted">{t(lang, 'loading')}</p> : <EntriesTable entries={entries} lang={lang} workerView />}</section>
-    </main>
-  );
+  const submit = async (event: FormEvent) => { event.preventDefault(); setMessage(''); setError(''); setSaving(true); try { await api('/entries', { method: 'POST', body: JSON.stringify({ date, site, start: sunday ? null : start, end: sunday ? null : end }) }); setMessage(t(lang, 'submitted')); await load(); } catch (err) { handleError(err); } finally { setSaving(false); } };
+  return <main className="shell wide"><Header title={t(lang, 'worker')} lang={lang} setLang={setLang} logout={logout} name={name} /><form className="card" onSubmit={submit}><h2>{t(lang, 'newEntry')}</h2><div className="form-grid"><div><label>{t(lang, 'date')}</label><input type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} required /></div><div><label>{t(lang, 'workSite')}</label><select value={site} onChange={(e) => setSite(e.target.value)} required><option value="">{t(lang, 'selectSite')}</option>{sites.map((row) => <option key={row._id} value={row._id}>{row.name}</option>)}</select></div></div>{!sunday ? <div className="two"><div><label>{t(lang, 'start')}</label><select value={start} onChange={(e) => setStart(e.target.value)}>{halfHourOptions.map((v) => <option key={v}>{v}</option>)}</select></div><div><label>{t(lang, 'finish')}</label><select value={end} onChange={(e) => setEnd(e.target.value)}>{halfHourOptions.map((v) => <option key={v}>{v}</option>)}</select></div></div> : <Alert kind="info">{t(lang, 'sundayNote')}</Alert>}{error && <Alert kind="error">{error}</Alert>}{message && <Alert kind="success">{message}</Alert>}<button className="primary" type="submit" disabled={saving || loading}>{saving ? t(lang, 'saving') : t(lang, 'submit')}</button></form><section className="card"><h2>{t(lang, 'recentEntries')}</h2>{loading ? <p className="muted">{t(lang, 'loading')}</p> : <EntriesTable entries={entries} lang={lang} workerView />}</section></main>;
 }
 
 function Admin({ lang, setLang, logout, name }: SharedProps) {
-  const [tab, setTab] = useState<AdminTab>('timesheets');
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [workers, setWorkers] = useState<Worker[]>([]);
-  const [sites, setSites] = useState<Site[]>([]);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<Filters>({ workerId: '', site: '', date: '', week: '', month: '' });
-  const [workerDraft, setWorkerDraft] = useState<{ id?: string; name: string; pin: string }>({ name: '', pin: '' });
-  const [siteDraft, setSiteDraft] = useState<{ id?: string; name: string }>({ name: '' });
-  const [noteEntry, setNoteEntry] = useState<Entry | null>(null);
-  const [note, setNote] = useState('');
-  const [showLate, setShowLate] = useState(false);
-  const [saving, setSaving] = useState(false);
-
+  const [tab, setTab] = useState<AdminTab>('timesheets'), [entries, setEntries] = useState<Entry[]>([]), [workers, setWorkers] = useState<Worker[]>([]), [sites, setSites] = useState<Site[]>([]), [error, setError] = useState(''), [message, setMessage] = useState(''), [loading, setLoading] = useState(true), [filters, setFilters] = useState<Filters>({ workerId: '', site: '', date: '', week: '', month: '' }), [workerDraft, setWorkerDraft] = useState<{ id?: string; name: string; pin: string }>({ name: '', pin: '' }), [siteDraft, setSiteDraft] = useState<{ id?: string; name: string }>({ name: '' }), [noteEntry, setNoteEntry] = useState<Entry | null>(null), [note, setNote] = useState(''), [showLate, setShowLate] = useState(false), [saving, setSaving] = useState(false);
   const handleError = (err: unknown) => { if (err instanceof ApiError && err.code === 'AUTH_REQUIRED') logout(); setError(errorMessage(lang, err)); };
-  const load = async () => {
-    setLoading(true); setError('');
-    try { const [entryRows, workerRows, siteRows] = await Promise.all([api<Entry[]>('/entries'), api<Worker[]>('/admin/workers'), api<Site[]>('/admin/sites')]); setEntries(entryRows); setWorkers(workerRows); setSites(siteRows); }
-    catch (err) { handleError(err); }
-    finally { setLoading(false); }
-  };
+  const load = async () => { setLoading(true); setError(''); try { const [entryRows, workerRows, siteRows] = await Promise.all([api<Entry[]>('/entries'), api<Worker[]>('/admin/workers'), api<Site[]>('/admin/sites')]); setEntries(entryRows); setWorkers(workerRows); setSites(siteRows); } catch (err) { handleError(err); } finally { setLoading(false); } };
   useEffect(() => { void load(); }, []);
-
   const filteredEntries = useMemo(() => entries.filter((entry) => (!filters.workerId || entry.workerId === filters.workerId) && (!filters.site || entry.site === filters.site) && (!filters.date || entry.date === filters.date) && (!filters.week || isoWeekKey(entry.date) === filters.week) && (!filters.month || entry.date.slice(0, 7) === filters.month)), [entries, filters]);
   const totals = filteredEntries.reduce((sum, entry) => ({ regular: sum.regular + entry.regular, overtime: sum.overtime + entry.overtime }), { regular: 0, overtime: 0 });
-  const hoursByWorker = useMemo(() => {
-    const map = new Map<string, { workerName: string; regular: number; overtime: number; rows: number }>();
-    filteredEntries.forEach((entry) => {
-      const current = map.get(entry.workerId) || { workerName: entry.workerName, regular: 0, overtime: 0, rows: 0 };
-      current.regular += entry.regular;
-      current.overtime += entry.overtime;
-      current.rows += 1;
-      map.set(entry.workerId, current);
-    });
-    return Array.from(map.values()).sort((a, b) => a.workerName.localeCompare(b.workerName));
-  }, [filteredEntries]);
-  const activeWorkers = workers.filter((worker) => worker.active);
-  const activeWorkerIds = new Set(activeWorkers.map((worker) => worker._id));
+  const hoursByWorker = useMemo(() => { const map = new Map<string, { workerName: string; regular: number; overtime: number; rows: number }>(); filteredEntries.forEach((entry) => { const current = map.get(entry.workerId) || { workerName: entry.workerName, regular: 0, overtime: 0, rows: 0 }; current.regular += entry.regular; current.overtime += entry.overtime; current.rows += 1; map.set(entry.workerId, current); }); return Array.from(map.values()).sort((a, b) => a.workerName.localeCompare(b.workerName)); }, [filteredEntries]);
+  const activeWorkers = workers.filter((worker) => worker.active), activeWorkerIds = new Set(activeWorkers.map((worker) => worker._id));
   const submittedTodayIds = new Set(entries.filter((entry) => entry.date === today && activeWorkerIds.has(entry.workerId)).map((entry) => entry.workerId));
   const lateRows = filteredEntries.filter((entry) => entry.isLate);
   const resetMessages = () => { setError(''); setMessage(''); };
-
   const saveWorker = async (event: FormEvent) => { event.preventDefault(); resetMessages(); setSaving(true); try { if (workerDraft.id) await api(`/admin/workers/${workerDraft.id}`, { method: 'PATCH', body: JSON.stringify({ name: workerDraft.name, ...(workerDraft.pin ? { pin: workerDraft.pin } : {}) }) }); else await api('/admin/workers', { method: 'POST', body: JSON.stringify({ name: workerDraft.name, pin: workerDraft.pin }) }); setMessage(workerDraft.id ? t(lang, 'updatedWorker') : t(lang, 'createdWorker')); setWorkerDraft({ name: '', pin: '' }); await load(); } catch (err) { handleError(err); } finally { setSaving(false); } };
   const toggleWorker = async (worker: Worker) => { if (worker.active && !window.confirm(t(lang, 'confirmDisableWorker'))) return; resetMessages(); try { await api(`/admin/workers/${worker._id}`, { method: 'PATCH', body: JSON.stringify({ active: !worker.active }) }); await load(); } catch (err) { handleError(err); } };
   const saveSite = async (event: FormEvent) => { event.preventDefault(); resetMessages(); setSaving(true); try { if (siteDraft.id) await api(`/admin/sites/${siteDraft.id}`, { method: 'PATCH', body: JSON.stringify({ name: siteDraft.name }) }); else await api('/admin/sites', { method: 'POST', body: JSON.stringify({ name: siteDraft.name }) }); setMessage(siteDraft.id ? t(lang, 'updatedSite') : t(lang, 'createdSite')); setSiteDraft({ name: '' }); await load(); } catch (err) { handleError(err); } finally { setSaving(false); } };
   const toggleSite = async (site: Site) => { if (site.active && !window.confirm(t(lang, 'confirmDisableSite'))) return; resetMessages(); try { await api(`/admin/sites/${site._id}`, { method: 'PATCH', body: JSON.stringify({ active: !site.active }) }); await load(); } catch (err) { handleError(err); } };
   const openNote = (entry: Entry) => { resetMessages(); setNoteEntry(entry); setNote(entry.adminNote || ''); };
   const saveNote = async (event: FormEvent) => { event.preventDefault(); if (!noteEntry) return; resetMessages(); setSaving(true); try { await api(`/admin/entries/${noteEntry._id}`, { method: 'PATCH', body: JSON.stringify({ adminNote: note }) }); setNoteEntry(null); setNote(''); setMessage(t(lang, 'updatedEntry')); await load(); } catch (err) { handleError(err); } finally { setSaving(false); } };
-  const exportRows = (format: 'csv' | 'xls') => {
-    if (!filteredEntries.length) { setError(t(lang, 'exportNoRows')); return; }
-    const headers = [t(lang, 'workerName'), t(lang, 'date'), t(lang, 'workSite'), t(lang, 'start'), t(lang, 'finish'), t(lang, 'regular'), t(lang, 'overtime'), tt(lang, 'status'), tt(lang, 'submittedAt'), tt(lang, 'adminNote')];
-    const rows = filteredEntries.map((entry) => [entry.workerName, entry.date, entry.siteName, entry.start || '', entry.end || '', entry.regular, entry.overtime, entry.isLate ? tt(lang, 'late') : tt(lang, 'onTime'), formatDateTime(entry.submittedAt), entry.adminNote || '']);
-    if (format === 'csv') { downloadFile(`\uFEFF${[headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\r\n')}`, 'text/csv;charset=utf-8', `worktime-${today}.csv`); return; }
-    const table = `<html><head><meta charset="utf-8"></head><body><table border="1"><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((value) => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
-    downloadFile(`\uFEFF${table}`, 'application/vnd.ms-excel;charset=utf-8', `worktime-${today}.xls`);
-  };
-
-  return (
-    <main className="shell wide admin-shell">
-      <Header title={t(lang, 'dashboard')} lang={lang} setLang={setLang} logout={logout} name={name} />
-      <nav className="nav admin-nav">{(['timesheets', 'workers', 'sites'] as AdminTab[]).map((item) => <button type="button" key={item} className={tab === item ? 'active' : ''} onClick={() => { setTab(item); resetMessages(); }}>{t(lang, item)}</button>)}</nav>
-      {error && <Alert kind="error">{error}</Alert>}{message && <Alert kind="success">{message}</Alert>}
-      {tab === 'timesheets' && <section className="card">
-        <div className="stats"><Stat value={activeWorkers.length} label={t(lang, 'activeWorkers')} /><Stat value={submittedTodayIds.size} label={t(lang, 'submittedToday')} /><Stat value={Math.max(0, activeWorkers.length - submittedTodayIds.size)} label={t(lang, 'missingToday')} /><Stat value={formatHours(totals.regular)} label={tt(lang, 'totalRegular')} /><Stat value={formatHours(totals.overtime)} label={tt(lang, 'totalOvertime')} /><Stat value={lateRows.length} label={tt(lang, 'lateSubmissions')} onClick={() => setShowLate((value) => !value)} /></div>
-        {showLate && <div className="card soft-card"><h3>{tt(lang, 'lateSubmissionList')}</h3>{lateRows.length ? <EntriesTable entries={lateRows} lang={lang} onNote={openNote} /> : <p className="muted">{tt(lang, 'noLateRows')}</p>}</div>}
-        <div className="section-heading"><h2>{t(lang, 'timesheets')}</h2><div className="button-row"><button type="button" onClick={() => exportRows('csv')}>{t(lang, 'exportCsv')}</button><button type="button" onClick={() => exportRows('xls')}>{t(lang, 'exportExcel')}</button></div></div>
-        <div className="filters"><div><label>{t(lang, 'workerLabel')}</label><select value={filters.workerId} onChange={(e) => setFilters((current) => ({ ...current, workerId: e.target.value }))}><option value="">{t(lang, 'allWorkers')}</option>{workers.map((worker) => <option key={worker._id} value={worker._id}>{worker.name}</option>)}</select></div><div><label>{t(lang, 'workSite')}</label><select value={filters.site} onChange={(e) => setFilters((current) => ({ ...current, site: e.target.value }))}><option value="">{t(lang, 'allSites')}</option>{sites.map((site) => <option key={site._id} value={site._id}>{site.name}</option>)}</select></div><div><label>{t(lang, 'exactDate')}</label><input type="date" max={today} value={filters.date} onChange={(e) => setFilters((current) => ({ ...current, date: e.target.value }))} /></div><div><label>{t(lang, 'week')}</label><input type="week" value={filters.week} onChange={(e) => setFilters((current) => ({ ...current, week: e.target.value }))} /></div><div><label>{t(lang, 'month')}</label><input type="month" value={filters.month} onChange={(e) => setFilters((current) => ({ ...current, month: e.target.value }))} /></div><div className="filter-action"><button type="button" onClick={() => setFilters({ workerId: '', site: '', date: '', week: '', month: '' })}>{t(lang, 'clearFilters')}</button></div></div>
-        <div className="card soft-card"><h3>{tt(lang, 'hoursByWorker')}</h3>{hoursByWorker.length ? <div className="table-wrap"><table><thead><tr><th>{t(lang, 'workerName')}</th><th>{t(lang, 'regular')}</th><th>{t(lang, 'overtime')}</th><th>{tt(lang, 'total')}</th><th>{tt(lang, 'entries')}</th></tr></thead><tbody>{hoursByWorker.map((row) => <tr key={row.workerName}><td><strong>{row.workerName}</strong></td><td>{formatHours(row.regular)}</td><td>{formatHours(row.overtime)}</td><td>{formatHours(row.regular + row.overtime)}</td><td>{row.rows}</td></tr>)}</tbody></table></div> : <p className="muted">{t(lang, 'noFilteredRows')}</p>}</div>
-        {loading ? <p className="muted">{t(lang, 'loading')}</p> : <EntriesTable entries={filteredEntries} lang={lang} onNote={openNote} />}
-      </section>}
-      {tab === 'workers' && <section className="card"><div className="section-heading"><h2>{t(lang, 'workers')}</h2></div><form className="editor-form worker-editor" onSubmit={saveWorker}><div><label>{t(lang, 'workerName')}</label><input value={workerDraft.name} onChange={(e) => setWorkerDraft((current) => ({ ...current, name: e.target.value }))} required /></div><div><label>{workerDraft.id ? t(lang, 'newPinOptional') : t(lang, 'pin')}</label><input type="password" inputMode="numeric" placeholder={t(lang, 'pinHint')} value={workerDraft.pin} onChange={(e) => setWorkerDraft((current) => ({ ...current, pin: e.target.value.replace(/\D/g, '').slice(0, 12) }))} required={!workerDraft.id} /></div><div className="form-actions"><button className="primary compact" type="submit" disabled={saving}>{saving ? t(lang, 'saving') : workerDraft.id ? t(lang, 'updateWorker') : t(lang, 'addWorker')}</button>{workerDraft.id && <button type="button" onClick={() => setWorkerDraft({ name: '', pin: '' })}>{t(lang, 'cancel')}</button>}</div></form><div className="manage-list">{workers.map((worker) => <div className="manage-row" key={worker._id}><div><strong>{worker.name}</strong></div><StatusBadge active={worker.active} lang={lang} /><div className="button-row"><button type="button" onClick={() => setWorkerDraft({ id: worker._id, name: worker.name, pin: '' })}>{t(lang, 'edit')}</button><button type="button" className={worker.active ? 'danger-soft' : 'success-soft'} onClick={() => void toggleWorker(worker)}>{worker.active ? t(lang, 'disable') : t(lang, 'enable')}</button></div></div>)}</div></section>}
-      {tab === 'sites' && <section className="card"><div className="section-heading"><h2>{t(lang, 'sites')}</h2></div><form className="editor-form site-editor" onSubmit={saveSite}><div><label>{t(lang, 'siteName')}</label><input value={siteDraft.name} onChange={(e) => setSiteDraft((current) => ({ ...current, name: e.target.value }))} required /></div><div className="form-actions"><button className="primary compact" type="submit" disabled={saving}>{saving ? t(lang, 'saving') : siteDraft.id ? t(lang, 'updateSite') : t(lang, 'addSite')}</button>{siteDraft.id && <button type="button" onClick={() => setSiteDraft({ name: '' })}>{t(lang, 'cancel')}</button>}</div></form><div className="manage-list">{sites.map((site) => <div className="manage-row" key={site._id}><div><strong>{site.name}</strong></div><StatusBadge active={site.active} lang={lang} /><div className="button-row"><button type="button" onClick={() => setSiteDraft({ id: site._id, name: site.name })}>{t(lang, 'edit')}</button><button type="button" className={site.active ? 'danger-soft' : 'success-soft'} onClick={() => void toggleSite(site)}>{site.active ? t(lang, 'disable') : t(lang, 'enable')}</button></div></div>)}</div></section>}
-      {noteEntry && <div className="modal-backdrop" role="presentation" onMouseDown={() => setNoteEntry(null)}><form className="modal-card" onSubmit={saveNote} onMouseDown={(e) => e.stopPropagation()}><div className="section-heading"><div><h2>{tt(lang, 'adminNote')}</h2><p className="muted">{noteEntry.workerName} — {noteEntry.date}</p></div><button type="button" className="icon-button" onClick={() => setNoteEntry(null)}>×</button></div><label>{tt(lang, 'note')}</label><textarea value={note} onChange={(e) => setNote(e.target.value)} rows={5} /><div className="modal-actions"><button type="button" onClick={() => setNoteEntry(null)}>{t(lang, 'cancel')}</button><button className="primary compact" type="submit" disabled={saving}>{saving ? t(lang, 'saving') : tt(lang, 'saveNote')}</button></div></form></div>}
-    </main>
-  );
+  const exportRows = (format: 'csv' | 'xls') => { if (!filteredEntries.length) { setError(t(lang, 'exportNoRows')); return; } const headers = [t(lang, 'workerName'), t(lang, 'date'), t(lang, 'workSite'), t(lang, 'start'), t(lang, 'finish'), t(lang, 'regular'), t(lang, 'overtime'), tt(lang, 'status'), tt(lang, 'submittedAt'), tt(lang, 'adminNote')]; const rows = filteredEntries.map((entry) => [entry.workerName, entry.date, entry.siteName, entry.start || '', entry.end || '', entry.regular, entry.overtime, entry.isLate ? tt(lang, 'late') : tt(lang, 'onTime'), formatDateTime(entry.submittedAt), entry.adminNote || '']); if (format === 'csv') { downloadFile(`\uFEFF${[headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\r\n')}`, 'text/csv;charset=utf-8', `worktime-${today}.csv`); return; } const table = `<html><head><meta charset="utf-8"></head><body><table border="1"><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((value) => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`; downloadFile(`\uFEFF${table}`, 'application/vnd.ms-excel;charset=utf-8', `worktime-${today}.xls`); };
+  return <main className="shell wide admin-shell"><Header title={t(lang, 'dashboard')} lang={lang} setLang={setLang} logout={logout} name={name} /><nav className="nav admin-nav">{(['timesheets', 'workers', 'sites'] as AdminTab[]).map((item) => <button type="button" key={item} className={tab === item ? 'active' : ''} onClick={() => { setTab(item); resetMessages(); }}>{t(lang, item)}</button>)}</nav>{error && <Alert kind="error">{error}</Alert>}{message && <Alert kind="success">{message}</Alert>}{tab === 'timesheets' && <section className="card"><div className="stats"><Stat value={activeWorkers.length} label={t(lang, 'activeWorkers')} /><Stat value={submittedTodayIds.size} label={t(lang, 'submittedToday')} /><Stat value={Math.max(0, activeWorkers.length - submittedTodayIds.size)} label={t(lang, 'missingToday')} /><Stat value={formatHours(totals.regular)} label={tt(lang, 'totalRegular')} /><Stat value={formatHours(totals.overtime)} label={tt(lang, 'totalOvertime')} /><Stat value={lateRows.length} label={tt(lang, 'lateSubmissions')} onClick={() => setShowLate((value) => !value)} /></div>{showLate && <div className="card soft-card"><h3>{tt(lang, 'lateSubmissionList')}</h3>{lateRows.length ? <EntriesTable entries={lateRows} lang={lang} onNote={openNote} /> : <p className="muted">{tt(lang, 'noLateRows')}</p>}</div>}<div className="section-heading"><h2>{t(lang, 'timesheets')}</h2><div className="button-row"><button type="button" onClick={() => exportRows('csv')}>{t(lang, 'exportCsv')}</button><button type="button" onClick={() => exportRows('xls')}>{t(lang, 'exportExcel')}</button></div></div><div className="filters"><div><label>{t(lang, 'workerLabel')}</label><select value={filters.workerId} onChange={(e) => setFilters((current) => ({ ...current, workerId: e.target.value }))}><option value="">{t(lang, 'allWorkers')}</option>{workers.map((worker) => <option key={worker._id} value={worker._id}>{worker.name}</option>)}</select></div><div><label>{t(lang, 'workSite')}</label><select value={filters.site} onChange={(e) => setFilters((current) => ({ ...current, site: e.target.value }))}><option value="">{t(lang, 'allSites')}</option>{sites.map((site) => <option key={site._id} value={site._id}>{site.name}</option>)}</select></div><div><label>{t(lang, 'exactDate')}</label><input type="date" max={today} value={filters.date} onChange={(e) => setFilters((current) => ({ ...current, date: e.target.value }))} /></div><div><label>{t(lang, 'week')}</label><input type="week" value={filters.week} onChange={(e) => setFilters((current) => ({ ...current, week: e.target.value }))} /></div><div><label>{t(lang, 'month')}</label><input type="month" value={filters.month} onChange={(e) => setFilters((current) => ({ ...current, month: e.target.value }))} /></div><div className="filter-action"><button type="button" onClick={() => setFilters({ workerId: '', site: '', date: '', week: '', month: '' })}>{t(lang, 'clearFilters')}</button></div></div><div className="card soft-card"><h3>{tt(lang, 'hoursByWorker')}</h3>{hoursByWorker.length ? <div className="table-wrap"><table><thead><tr><th>{t(lang, 'workerName')}</th><th>{t(lang, 'regular')}</th><th>{t(lang, 'overtime')}</th><th>{tt(lang, 'total')}</th><th>{tt(lang, 'entries')}</th></tr></thead><tbody>{hoursByWorker.map((row) => <tr key={row.workerName}><td><strong>{row.workerName}</strong></td><td>{formatHours(row.regular)}</td><td>{formatHours(row.overtime)}</td><td>{formatHours(row.regular + row.overtime)}</td><td>{row.rows}</td></tr>)}</tbody></table></div> : <p className="muted">{t(lang, 'noFilteredRows')}</p>}</div>{loading ? <p className="muted">{t(lang, 'loading')}</p> : <EntriesTable entries={filteredEntries} lang={lang} onNote={openNote} />}</section>}{tab === 'workers' && <section className="card"><div className="section-heading"><h2>{t(lang, 'workers')}</h2></div><form className="editor-form worker-editor" onSubmit={saveWorker}><div><label>{t(lang, 'workerName')}</label><input value={workerDraft.name} onChange={(e) => setWorkerDraft((current) => ({ ...current, name: e.target.value }))} required /></div><div><label>{workerDraft.id ? t(lang, 'newPinOptional') : t(lang, 'pin')}</label><input type="password" inputMode="numeric" placeholder={t(lang, 'pinHint')} value={workerDraft.pin} onChange={(e) => setWorkerDraft((current) => ({ ...current, pin: e.target.value.replace(/\D/g, '').slice(0, 12) }))} required={!workerDraft.id} /></div><div className="form-actions"><button className="primary compact" type="submit" disabled={saving}>{saving ? t(lang, 'saving') : workerDraft.id ? t(lang, 'updateWorker') : t(lang, 'addWorker')}</button>{workerDraft.id && <button type="button" onClick={() => setWorkerDraft({ name: '', pin: '' })}>{t(lang, 'cancel')}</button>}</div></form><div className="manage-list">{workers.map((worker) => <div className="manage-row" key={worker._id}><div><strong>{worker.name}</strong></div><StatusBadge active={worker.active} lang={lang} /><div className="button-row"><button type="button" onClick={() => setWorkerDraft({ id: worker._id, name: worker.name, pin: '' })}>{t(lang, 'edit')}</button><button type="button" className={worker.active ? 'danger-soft' : 'success-soft'} onClick={() => void toggleWorker(worker)}>{worker.active ? t(lang, 'disable') : t(lang, 'enable')}</button></div></div>)}</div></section>}{tab === 'sites' && <section className="card"><div className="section-heading"><h2>{t(lang, 'sites')}</h2></div><form className="editor-form site-editor" onSubmit={saveSite}><div><label>{t(lang, 'siteName')}</label><input value={siteDraft.name} onChange={(e) => setSiteDraft((current) => ({ ...current, name: e.target.value }))} required /></div><div className="form-actions"><button className="primary compact" type="submit" disabled={saving}>{saving ? t(lang, 'saving') : siteDraft.id ? t(lang, 'updateSite') : t(lang, 'addSite')}</button>{siteDraft.id && <button type="button" onClick={() => setSiteDraft({ name: '' })}>{t(lang, 'cancel')}</button>}</div></form><div className="manage-list">{sites.map((site) => <div className="manage-row" key={site._id}><div><strong>{site.name}</strong></div><StatusBadge active={site.active} lang={lang} /><div className="button-row"><button type="button" onClick={() => setSiteDraft({ id: site._id, name: site.name })}>{t(lang, 'edit')}</button><button type="button" className={site.active ? 'danger-soft' : 'success-soft'} onClick={() => void toggleSite(site)}>{site.active ? t(lang, 'disable') : t(lang, 'enable')}</button></div></div>)}</div></section>}{noteEntry && <div className="modal-backdrop" role="presentation" onMouseDown={() => setNoteEntry(null)}><form className="modal-card" onSubmit={saveNote} onMouseDown={(e) => e.stopPropagation()}><div className="section-heading"><div><h2>{tt(lang, 'adminNote')}</h2><p className="muted">{noteEntry.workerName} — {noteEntry.date}</p></div><button type="button" className="icon-button" onClick={() => setNoteEntry(null)}>×</button></div><label>{tt(lang, 'note')}</label><textarea value={note} onChange={(e) => setNote(e.target.value)} rows={5} /><div className="modal-actions"><button type="button" onClick={() => setNoteEntry(null)}>{t(lang, 'cancel')}</button><button className="primary compact" type="submit" disabled={saving}>{saving ? t(lang, 'saving') : tt(lang, 'saveNote')}</button></div></form></div>}</main>;
 }
 
-function EntriesTable({ entries, lang, onNote, workerView }: { entries: Entry[]; lang: Lang; onNote?: (entry: Entry) => void; workerView?: boolean }) {
-  if (!entries.length) return <p className="muted">{workerView ? t(lang, 'noEntries') : t(lang, 'noFilteredRows')}</p>;
-  return <div className="table-wrap"><table><thead><tr>{!workerView && <th>{t(lang, 'workerLabel')}</th>}<th>{t(lang, 'date')}</th><th>{t(lang, 'workSite')}</th><th>{t(lang, 'start')}</th><th>{t(lang, 'finish')}</th><th>{t(lang, 'regular')}</th><th>{t(lang, 'overtime')}</th><th>{tt(lang, 'status')}</th><th>{tt(lang, 'submittedAt')}</th><th>{tt(lang, 'adminNote')}</th>{onNote && <th>{t(lang, 'actions')}</th>}</tr></thead><tbody>{entries.map((entry) => <tr key={entry._id}>{!workerView && <td><strong>{entry.workerName}</strong></td>}<td>{entry.date}</td><td>{entry.siteName}</td><td>{entry.start || '—'}</td><td>{entry.end || '—'}</td><td>{formatHours(entry.regular)}</td><td>{formatHours(entry.overtime)}</td><td><LateBadge isLate={!!entry.isLate} lang={lang} /></td><td>{formatDateTime(entry.submittedAt)}</td><td>{entry.adminNote || '—'}</td>{onNote && <td><button type="button" onClick={() => onNote(entry)}>{tt(lang, 'note')}</button></td>}</tr>)}</tbody></table></div>;
-}
+function EntriesTable({ entries, lang, onNote, workerView }: { entries: Entry[]; lang: Lang; onNote?: (entry: Entry) => void; workerView?: boolean }) { if (!entries.length) return <p className="muted">{workerView ? t(lang, 'noEntries') : t(lang, 'noFilteredRows')}</p>; return <div className="table-wrap"><table><thead><tr>{!workerView && <th>{t(lang, 'workerLabel')}</th>}<th>{t(lang, 'date')}</th><th>{t(lang, 'workSite')}</th><th>{t(lang, 'start')}</th><th>{t(lang, 'finish')}</th><th>{t(lang, 'regular')}</th><th>{t(lang, 'overtime')}</th><th>{tt(lang, 'status')}</th><th>{tt(lang, 'submittedAt')}</th><th>{tt(lang, 'adminNote')}</th>{onNote && <th>{t(lang, 'actions')}</th>}</tr></thead><tbody>{entries.map((entry) => <tr key={entry._id}>{!workerView && <td><strong>{entry.workerName}</strong></td>}<td>{entry.date}</td><td>{entry.siteName}</td><td>{entry.start || '—'}</td><td>{entry.end || '—'}</td><td>{formatHours(entry.regular)}</td><td>{formatHours(entry.overtime)}</td><td><LateBadge isLate={!!entry.isLate} lang={lang} /></td><td>{formatDateTime(entry.submittedAt)}</td><td>{entry.adminNote || '—'}</td>{onNote && <td><button type="button" onClick={() => onNote(entry)}>{tt(lang, 'note')}</button></td>}</tr>)}</tbody></table></div>; }
 
 createRoot(document.getElementById('root')!).render(<App />);
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => undefined);
-  });
-}
+if ('serviceWorker' in navigator) window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => undefined); });
