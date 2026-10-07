@@ -78,8 +78,6 @@ let connectionPromise: Promise<typeof mongoose> | null = null;
 let adminBootstrapPromise: Promise<void> | null = null;
 
 async function ensureInitialAdmin() {
-  if (await Admin.exists({})) return;
-
   if (!adminBootstrapPromise) {
     adminBootstrapPromise = (async () => {
       if (await Admin.exists({})) return;
