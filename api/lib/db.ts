@@ -101,7 +101,6 @@ export const Entry = (mongoose.models.Entry as Model<EntryRecord>) || mongoose.m
 export const Session = (mongoose.models.Session as Model<SessionRecord>) || mongoose.model<SessionRecord>('Session', sessionSchema);
 
 let connectionPromise: Promise<typeof mongoose> | null = null;
-let adminBootstrapPromise: Promise<void> | null = null;
 
 export function databaseName() {
   return mongoose.connection.name || '';
@@ -112,36 +111,29 @@ function normalizeEmail(value: unknown) {
 }
 
 async function ensureInitialAdmin() {
-  if (!adminBootstrapPromise) {
-    adminBootstrapPromise = (async () => {
-      if (await Admin.exists({})) return;
+  if (await Admin.exists({})) return;
 
-      const email = normalizeEmail(process.env.ADMIN_EMAIL);
-      const password = String(process.env.ADMIN_PASSWORD ?? '');
-      if (!email || !password) {
-        throw new AppError(500, 'ADMIN_NOT_CONFIGURED', 'Initial admin is not configured.');
-      }
-      if (password.length < 10) {
-        throw new AppError(500, 'ADMIN_NOT_CONFIGURED', 'Initial admin password must be at least 10 characters.');
-      }
+  const email = normalizeEmail(process.env.ADMIN_EMAIL);
+  const password = String(process.env.ADMIN_PASSWORD ?? '');
 
-      try {
-        await Admin.create({
-          email,
-          passwordHash: await bcrypt.hash(password, 12),
-          active: true
-        });
-      } catch (error: unknown) {
-        const mongoError = error as { code?: number };
-        if (mongoError.code !== 11000) throw error;
-      }
-    })().catch((error) => {
-      adminBootstrapPromise = null;
-      throw error;
-    });
+  if (!email || !password) {
+    throw new AppError(500, 'ADMIN_NOT_CONFIGURED', 'Initial admin is not configured.');
   }
 
-  await adminBootstrapPromise;
+  if (password.length < 10) {
+    throw new AppError(500, 'ADMIN_NOT_CONFIGURED', 'Initial admin password must be at least 10 characters.');
+  }
+
+  try {
+    await Admin.create({
+      email,
+      passwordHash: await bcrypt.hash(password, 12),
+      active: true
+    });
+  } catch (error: unknown) {
+    const mongoError = error as { code?: number };
+    if (mongoError.code !== 11000) throw error;
+  }
 }
 
 export async function connectDatabase() {
