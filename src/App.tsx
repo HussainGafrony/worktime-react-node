@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { api } from './api';
 import { Alert, LanguageToggle } from './components/Common';
 import { t } from './i18n';
 import { AdminPage } from './pages/AdminPage';
@@ -30,6 +31,7 @@ export function App() {
   };
 
   const logout = () => {
+    void api('/auth/logout', { method: 'POST' }).catch(() => undefined);
     localStorage.removeItem('role');
     localStorage.removeItem('token');
     localStorage.removeItem('displayName');
