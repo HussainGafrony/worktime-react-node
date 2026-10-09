@@ -21,21 +21,17 @@ WorkTime is a mobile-first work-time reporting application for workers and an ac
 
 ## Official MongoDB database
 
-The application uses one official database name:
+The application now relies only on the database name inside `MONGODB_URI`.
 
-```text
-worktimecluster
-```
-
-Set it explicitly with:
+Example:
 
 ```env
-MONGODB_DB_NAME=worktimecluster
+MONGODB_URI=mongodb+srv://USER:PASSWORD@CLUSTER/worktimecluster?retryWrites=true&w=majority&appName=Cluster0
 ```
 
-The code passes this value to Mongoose as `dbName`, so the database path inside `MONGODB_URI` cannot accidentally switch the application to another database.
+In this example, the selected database is `worktimecluster`.
 
-If the Atlas cluster currently contains both `worktime` and `worktimecluster`, verify that `worktimecluster` contains the intended production collections before archiving or deleting the older database.
+If the Atlas cluster currently contains both `worktime` and `worktimecluster`, make sure the production `MONGODB_URI` points to the intended one before archiving or deleting the older database.
 
 Expected collections:
 
@@ -48,8 +44,8 @@ Expected collections:
 ## Environment variables
 
 ```env
-MONGODB_URI=mongodb+srv://USER:PASSWORD@CLUSTER/
-MONGODB_DB_NAME=worktimecluster
+MONGODB_URI=mongodb+srv://USER:PASSWORD@CLUSTER/worktimecluster?retryWrites=true&w=majority&appName=Cluster0
+PIN_LOOKUP_SECRET=replace-with-a-long-random-secret
 APP_TIMEZONE=Europe/Athens
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=ChangeMe123!
@@ -219,8 +215,8 @@ The build runs TypeScript checks for both frontend and API before Vite productio
 
 Before every production deployment:
 
-1. Confirm `MONGODB_URI` points to the correct Atlas cluster.
-2. Confirm `MONGODB_DB_NAME=worktimecluster`.
+1. Confirm `MONGODB_URI` points to the correct Atlas cluster and database.
+2. Confirm the database name in the URI is the intended production database.
 3. Confirm `PIN_LOOKUP_SECRET` is at least 24 characters.
 4. Confirm `ADMIN_EMAIL` and `ADMIN_PASSWORD` are set for first bootstrap only.
 5. Run `npm run build`.
