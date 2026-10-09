@@ -8,7 +8,7 @@ WorkTime is a mobile-first work-time reporting application for workers and an ac
 - Node.js + Express
 - MongoDB + Mongoose
 - bcryptjs for password/PIN verification
-- JWT authentication
+- Database-backed opaque session authentication
 - Built-in OpenXML writer for real `.xlsx` exports (no spreadsheet runtime dependency)
 - Vercel for hosting and serverless API deployment
 
@@ -43,25 +43,19 @@ Expected collections:
 - `workers`
 - `sites`
 - `entries`
+- `sessions`
 
 ## Environment variables
 
 ```env
 MONGODB_URI=mongodb+srv://USER:PASSWORD@CLUSTER/
 MONGODB_DB_NAME=worktimecluster
-JWT_SECRET=replace-with-a-long-random-secret
 APP_TIMEZONE=Europe/Athens
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=ChangeMe123!
 ```
 
-Optional:
-
-```env
-PIN_LOOKUP_SECRET=replace-with-a-long-random-secret
-```
-
-Do not set `PIN_LOOKUP_SECRET` on an existing database until worker PIN keys have been migrated. When it is absent, the current JWT secret is used for compatibility with existing worker PIN keys.
+`PIN_LOOKUP_SECRET` is required and must be at least 24 characters. Existing workers are migrated automatically on their first successful PIN login after this change.
 
 ## Initial admin bootstrap
 
@@ -74,6 +68,16 @@ On the first successful database connection:
 5. Future logins are verified against MongoDB, not directly against the environment password.
 
 The initial password must be at least 10 characters.
+
+## Authentication sessions
+
+Authentication no longer uses JWTs. Login creates a cryptographically random opaque token. Only a SHA-256 hash of that token is stored in the `sessions` collection.
+
+- Accountant sessions expire after 12 hours.
+- Worker sessions expire after 30 days.
+- MongoDB TTL cleanup removes expired session records.
+- Logout revokes the current session.
+- Old JWT-based sessions are intentionally invalid after this migration and users must sign in again.
 
 ## Worker authentication
 
@@ -217,7 +221,7 @@ Before every production deployment:
 
 1. Confirm `MONGODB_URI` points to the correct Atlas cluster.
 2. Confirm `MONGODB_DB_NAME=worktimecluster`.
-3. Confirm `JWT_SECRET` is at least 24 characters.
+3. Confirm `PIN_LOOKUP_SECRET` is at least 24 characters.
 4. Confirm `ADMIN_EMAIL` and `ADMIN_PASSWORD` are set for first bootstrap only.
 5. Run `npm run build`.
 6. Verify `/api/health` returns `database: "worktimecluster"`.
