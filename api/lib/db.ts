@@ -34,8 +34,10 @@ export interface SessionRecord {
 
 export interface EntryRecord {
   workerId: mongoose.Types.ObjectId;
+  workerNameSnapshot?: string;
   date: string;
   site: mongoose.Types.ObjectId;
+  siteNameSnapshot?: string;
   start: string | null;
   end: string | null;
   regular: number;
@@ -75,8 +77,10 @@ const sessionSchema = new mongoose.Schema<SessionRecord>({
 
 const entrySchema = new mongoose.Schema<EntryRecord>({
   workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Worker', required: true, index: true },
+  workerNameSnapshot: { type: String, trim: true, maxlength: 80 },
   date: { type: String, required: true, index: true, match: /^\d{4}-\d{2}-\d{2}$/ },
   site: { type: mongoose.Schema.Types.ObjectId, ref: 'Site', required: true },
+  siteNameSnapshot: { type: String, trim: true, maxlength: 80 },
   start: { type: String, default: null, match: /^\d{2}:\d{2}$/ },
   end: { type: String, default: null, match: /^\d{2}:\d{2}$/ },
   regular: { type: Number, required: true, default: 0, min: 0 },
