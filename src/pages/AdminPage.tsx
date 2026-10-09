@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { api, apiDownload, ApiError } from '../api';
 import { Alert, Header, Stat, StatusBadge, type SharedPageProps } from '../components/Common';
 import { AdminEntriesTable } from '../components/EntriesTable';
@@ -34,7 +34,8 @@ export function AdminPage({ lang, setLang, logout, name }: SharedPageProps) {
   const [siteDraft, setSiteDraft] = useState<{ id?: string; name: string }>({ name: '' });
   const [noteEntry, setNoteEntry] = useState<Entry | null>(null);
   const [note, setNote] = useState('');
-  const [lateRows, setLateRows] = useState<Entry[] | null>(null);
+  const [lateReport, setLateReport] = useState<AdminEntriesResponse | null>(null);
+  const [latePage, setLatePage] = useState(1);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -80,7 +81,8 @@ export function AdminPage({ lang, setLang, logout, name }: SharedPageProps) {
 
   const setFilter = (patch: Partial<Filters>) => {
     setPage(1);
-    setLateRows(null);
+    setLatePage(1);
+    setLateReport(null);
     setFilters((current) => ({ ...current, ...patch }));
   };
 
@@ -139,16 +141,28 @@ export function AdminPage({ lang, setLang, logout, name }: SharedPageProps) {
       await api(`/admin/entries/${noteEntry._id}`, { method: 'PATCH', body: JSON.stringify({ adminNote: note }) });
       setNoteEntry(null); setNote(''); setMessage(t(lang, 'updatedEntry'));
       await loadReport(page);
+      if (lateReport) await loadLateRows(latePage);
     } catch (err) { handleError(err); } finally { setSaving(false); }
   };
 
-  const showLateRows = async () => {
-    if (lateRows) { setLateRows(null); return; }
+  const loadLateRows = async (targetPage: number) => {
     try {
-      const qs = queryString(filters, { late: true, page: 1, pageSize: 200 });
+      const qs = queryString(filters, { late: true, page: targetPage, pageSize: 50 });
       const response = await api<AdminEntriesResponse>(`/admin/entries?${qs}`);
-      setLateRows(response.items);
-    } catch (err) { handleError(err); }
+      setLateReport(response);
+      setLatePage(response.pagination.page);
+    } catch (err) {
+      handleError(err);
+    }
+  };
+
+  const showLateRows = async () => {
+    if (lateReport) {
+      setLateReport(null);
+      setLatePage(1);
+      return;
+    }
+    await loadLateRows(1);
   };
 
   const exportRows = async (format: 'csv' | 'xlsx') => {
@@ -187,10 +201,31 @@ export function AdminPage({ lang, setLang, logout, name }: SharedPageProps) {
             <Stat value={report?.lateCount || 0} label={t(lang, 'lateSubmissions')} onClick={() => void showLateRows()} />
           </div>
 
-          {lateRows && (
+          {lateReport && (
             <div className="card soft-card">
               <h3>{t(lang, 'lateList')}</h3>
-              <AdminEntriesTable entries={lateRows} lang={lang} onNote={openNote} />
+              <AdminEntriesTable entries={lateReport.items} lang={lang} onNote={openNote} />
+              {lateReport.pagination.total > 0 && (
+                <div className="pagination">
+                  <button
+                    type="button"
+                    disabled={lateReport.pagination.page <= 1}
+                    onClick={() => void loadLateRows(Math.max(1, latePage - 1))}
+                  >
+                    ‹
+                  </button>
+                  <span>
+                    {lateReport.pagination.page} / {lateReport.pagination.pages} · {lateReport.pagination.total}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={lateReport.pagination.page >= lateReport.pagination.pages}
+                    onClick={() => void loadLateRows(latePage + 1)}
+                  >
+                    ›
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -208,7 +243,7 @@ export function AdminPage({ lang, setLang, logout, name }: SharedPageProps) {
             <div><label>{t(lang, 'exactDate')}</label><input type="date" max={today} value={filters.date} onChange={(e) => setFilter({ date: e.target.value, week: '', month: '' })} /></div>
             <div><label>{t(lang, 'week')}</label><input type="week" value={filters.week} onChange={(e) => setFilter({ week: e.target.value, date: '', month: '' })} /></div>
             <div><label>{t(lang, 'month')}</label><input type="month" value={filters.month} onChange={(e) => setFilter({ month: e.target.value, date: '', week: '' })} /></div>
-            <div className="filter-action"><button type="button" onClick={() => { setPage(1); setFilters(emptyFilters); setLateRows(null); }}>{t(lang, 'clearFilters')}</button></div>
+            <div className="filter-action"><button type="button" onClick={() => { setPage(1); setLatePage(1); setFilters(emptyFilters); setLateReport(null); }}>{t(lang, 'clearFilters')}</button></div>
           </div>
 
           <div className="card soft-card">
