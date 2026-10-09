@@ -110,7 +110,7 @@ export const translations = {
     siteExists: 'This site already exists.',
     siteNotFound: 'Site was not found.',
     entryNotFound: 'Timesheet entry was not found.',
-    duplicateValue: 'This value is already in use.'
+    duplicateValue: 'This value is already in use.', noteOnlyError: 'Only the accountant note can be edited.', invalidExportFormat: 'Invalid export format.', exportTooLarge: 'The export is too large. Narrow the filters first.'
   },
   el: {
     appSubtitle: 'Καταγραφή εργασίας',
@@ -220,7 +220,7 @@ export const translations = {
     siteExists: 'Αυτό το εργοτάξιο υπάρχει ήδη.',
     siteNotFound: 'Το εργοτάξιο δεν βρέθηκε.',
     entryNotFound: 'Η καταχώρηση δεν βρέθηκε.',
-    duplicateValue: 'Αυτή η τιμή χρησιμοποιείται ήδη.'
+    duplicateValue: 'Αυτή η τιμή χρησιμοποιείται ήδη.', noteOnlyError: 'Μπορεί να επεξεργαστεί μόνο η σημείωση λογιστή.', invalidExportFormat: 'Μη έγκυρη μορφή εξαγωγής.', exportTooLarge: 'Η εξαγωγή είναι πολύ μεγάλη. Περιορίστε πρώτα τα φίλτρα.'
   }
 } as const;
 
@@ -254,6 +254,9 @@ const errorKeys: Record<string, TranslationKey> = {
   INVALID_ENTRY: 'entryNotFound',
   ENTRY_NOT_FOUND: 'entryNotFound',
   DUPLICATE_VALUE: 'duplicateValue',
+  NOTE_ONLY: 'noteOnlyError',
+  INVALID_EXPORT_FORMAT: 'invalidExportFormat',
+  EXPORT_TOO_LARGE: 'exportTooLarge',
   SERVER_ERROR: 'genericError'
 };
 
