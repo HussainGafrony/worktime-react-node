@@ -103,7 +103,6 @@ export function LoginPage({
         <button className="primary" type="submit" disabled={loading}>
           {loading ? t(lang, 'loading') : t(lang, 'login')}
         </button>
-        <p className="muted">{t(lang, 'loginHint')}</p>
       </form>
     </main>
   );
