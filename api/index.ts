@@ -1,9 +1,8 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { AppError, text } from './lib/errors';
 import { Admin, Entry, Site, Worker, connectDatabase, databaseName, objectId, validId } from './lib/db';
-import { type AuthenticatedRequest, authenticate, findWorkerByPin, jwtSecret, loginAdmin, requireAdmin, workerPinKey } from './lib/auth';
+import { type AuthenticatedRequest, authenticate, createSession, findWorkerByPin, loginAdmin, requireAdmin, revokeSession, workerPinKey } from './lib/auth';
 import { adminEntryPage, allEntries, buildEntryQuery, listEntries } from './lib/entries';
 import { appDate, hoursFor, isLateSubmission, validateWorkDate } from './lib/time';
 import { buildXlsx } from './lib/xlsx';
@@ -86,11 +85,7 @@ app.post('/api/auth/login', route(async (req, res) => {
     return res.json({
       role: 'admin',
       name: account.email,
-      token: jwt.sign(
-        { role: 'admin', id: String(account._id) },
-        jwtSecret(),
-        { expiresIn: '12h', algorithm: 'HS256' }
-      )
+      token: await createSession('admin', String(account._id))
     });
   }
 
@@ -110,12 +105,14 @@ app.post('/api/auth/login', route(async (req, res) => {
   return res.json({
     role: 'worker',
     name: worker.name,
-    token: jwt.sign(
-      { role: 'worker', id: String(worker._id) },
-      jwtSecret(),
-      { expiresIn: '30d', algorithm: 'HS256' }
-    )
+    token: await createSession('worker', String(worker._id))
   });
+}));
+
+app.post('/api/auth/logout', authenticate, route(async (req, res) => {
+  const header = text(req.headers.authorization);
+  await revokeSession(header.startsWith('Bearer ') ? header.slice(7) : '');
+  return res.json({ ok: true });
 }));
 
 app.get('/api/sites', authenticate, route(async (_req, res) => {
