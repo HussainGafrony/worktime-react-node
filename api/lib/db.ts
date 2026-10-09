@@ -23,6 +23,15 @@ export interface SiteRecord {
   active: boolean;
 }
 
+export interface SessionRecord {
+  tokenHash: string;
+  role: 'admin' | 'worker';
+  accountId: mongoose.Types.ObjectId;
+  expiresAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 export interface EntryRecord {
   workerId: mongoose.Types.ObjectId;
   date: string;
@@ -57,6 +66,13 @@ const siteSchema = new mongoose.Schema<SiteRecord>({
   active: { type: Boolean, default: true, required: true }
 }, schemaOptions);
 
+const sessionSchema = new mongoose.Schema<SessionRecord>({
+  tokenHash: { type: String, required: true, unique: true, index: true, minlength: 64, maxlength: 64 },
+  role: { type: String, required: true, enum: ['admin', 'worker'], index: true },
+  accountId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+  expiresAt: { type: Date, required: true, index: { expires: 0 } }
+}, schemaOptions);
+
 const entrySchema = new mongoose.Schema<EntryRecord>({
   workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Worker', required: true, index: true },
   date: { type: String, required: true, index: true, match: /^\d{4}-\d{2}-\d{2}$/ },
@@ -78,6 +94,7 @@ export const Admin = (mongoose.models.Admin as Model<AdminRecord>) || mongoose.m
 export const Worker = (mongoose.models.Worker as Model<WorkerRecord>) || mongoose.model<WorkerRecord>('Worker', workerSchema);
 export const Site = (mongoose.models.Site as Model<SiteRecord>) || mongoose.model<SiteRecord>('Site', siteSchema);
 export const Entry = (mongoose.models.Entry as Model<EntryRecord>) || mongoose.model<EntryRecord>('Entry', entrySchema);
+export const Session = (mongoose.models.Session as Model<SessionRecord>) || mongoose.model<SessionRecord>('Session', sessionSchema);
 
 let connectionPromise: Promise<typeof mongoose> | null = null;
 let adminBootstrapPromise: Promise<void> | null = null;
