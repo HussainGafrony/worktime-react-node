@@ -100,7 +100,7 @@ let connectionPromise: Promise<typeof mongoose> | null = null;
 let adminBootstrapPromise: Promise<void> | null = null;
 
 export function databaseName() {
-  return text(process.env.MONGODB_DB_NAME) || 'worktimecluster';
+  return mongoose.connection.name || '';
 }
 
 function normalizeEmail(value: unknown) {
@@ -147,7 +147,6 @@ export async function connectDatabase() {
   if (mongoose.connection.readyState !== 1) {
     if (!connectionPromise) {
       connectionPromise = mongoose.connect(uri, {
-        dbName: databaseName(),
         serverSelectionTimeoutMS: 10000,
         maxPoolSize: 10
       }).catch((error) => {
