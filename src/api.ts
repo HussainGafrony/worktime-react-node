@@ -10,12 +10,15 @@ export class ApiError extends Error {
   }
 }
 
-function authHeaders() {
+function requestHeaders(initial?: HeadersInit, json = false) {
+  const headers = new Headers(initial);
   const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  if (json && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  return headers;
 }
 
-async function throwApiError(response: Response) {
+async function throwApiError(response: Response): Promise<never> {
   const body = await response.json().catch(() => ({}));
   throw new ApiError(body.error || 'Request failed.', body.code || 'SERVER_ERROR', response.status);
 }
@@ -23,11 +26,7 @@ async function throwApiError(response: Response) {
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`/api${path}`, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders(),
-      ...(options.headers || {})
-    }
+    headers: requestHeaders(options.headers, true)
   });
 
   if (!response.ok) await throwApiError(response);
@@ -36,9 +35,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 
 export async function apiDownload(path: string, fallbackFilename: string) {
   const response = await fetch(`/api${path}`, {
-    headers: {
-      ...authHeaders()
-    }
+    headers: requestHeaders()
   });
 
   if (!response.ok) await throwApiError(response);
