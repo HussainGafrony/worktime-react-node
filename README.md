@@ -9,7 +9,7 @@ WorkTime is a mobile-first work-time reporting application for workers and an ac
 - MongoDB + Mongoose
 - bcryptjs for password/PIN verification
 - JWT authentication
-- ExcelJS for real `.xlsx` exports
+- Built-in OpenXML writer for real `.xlsx` exports (no spreadsheet runtime dependency)
 - Vercel for hosting and serverless API deployment
 
 ## Production URLs
