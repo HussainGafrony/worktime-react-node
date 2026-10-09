@@ -58,11 +58,11 @@ export function entryToJson(row: any) {
   return {
     _id: String(row._id),
     workerId: String(row.workerId?._id || row.workerId || ''),
-    workerName: row.workerId?.name || 'Unknown worker',
+    workerName: row.workerNameSnapshot || row.workerId?.name || 'Unknown worker',
     workerActive: row.workerId?.active ?? false,
     date: row.date,
     site: String(row.site?._id || row.site || ''),
-    siteName: row.site?.name || 'Unknown site',
+    siteName: row.siteNameSnapshot || row.site?.name || 'Unknown site',
     start: row.start ?? null,
     end: row.end ?? null,
     regular: row.regular,
