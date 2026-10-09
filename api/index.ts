@@ -36,10 +36,11 @@ function siteNameKey(value: unknown) {
 
 async function ensureSite(siteId: string, mustBeActive: boolean) {
   if (!validId(siteId)) throw new AppError(400, 'INVALID_SITE', 'Please choose a valid work site.');
-  const site = await Site.findById(siteId).select('active');
+  const site = await Site.findById(siteId).select('name active');
   if (!site || (mustBeActive && !site.active)) {
     throw new AppError(400, 'SITE_UNAVAILABLE', 'The selected work site is not available.');
   }
+  return site;
 }
 
 function pageNumber(value: unknown, fallback: number, max: number) {
@@ -138,9 +139,11 @@ app.post('/api/entries', authenticate, route(async (req, res) => {
   const date = text(req.body?.date);
   const site = text(req.body?.site);
   validateWorkDate(date);
-  await ensureSite(site, true);
+  const selectedSite = await ensureSite(site, true);
 
   const workerId = objectId(user.id);
+  const worker = await Worker.findById(workerId).select('name');
+  if (!worker) return fail(res, 401, 'AUTH_REQUIRED', 'Please sign in again.');
   if (await Entry.exists({ workerId, date })) {
     return fail(
       res,
@@ -159,8 +162,10 @@ app.post('/api/entries', authenticate, route(async (req, res) => {
 
   const entry = await Entry.create({
     workerId,
+    workerNameSnapshot: worker.name,
     date,
     site: objectId(site),
+    siteNameSnapshot: selectedSite.name,
     ...calculated,
     submittedAt,
     isLate: isLateSubmission(date, submittedAt),
@@ -305,7 +310,13 @@ app.patch('/api/admin/workers/:id', authenticate, requireAdmin, route(async (req
     if (name.length < 2 || name.length > 80) {
       return fail(res, 400, 'INVALID_WORKER_NAME', 'Worker name must be between 2 and 80 characters.');
     }
-    worker.name = name;
+    if (name !== worker.name) {
+      await Entry.updateMany(
+        { workerId: worker._id, workerNameSnapshot: { $exists: false } },
+        { $set: { workerNameSnapshot: worker.name } }
+      );
+      worker.name = name;
+    }
   }
 
   if (req.body?.pin !== undefined && req.body.pin !== '') {
@@ -366,8 +377,14 @@ app.patch('/api/admin/sites/:id', authenticate, requireAdmin, route(async (req, 
       return fail(res, 409, 'SITE_EXISTS', 'This site already exists.');
     }
 
-    site.name = name;
-    site.nameKey = nameKey;
+    if (name !== site.name) {
+      await Entry.updateMany(
+        { site: site._id, siteNameSnapshot: { $exists: false } },
+        { $set: { siteNameSnapshot: site.name } }
+      );
+      site.name = name;
+      site.nameKey = nameKey;
+    }
   }
 
   if (typeof req.body?.active === 'boolean') site.active = req.body.active;
