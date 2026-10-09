@@ -25,7 +25,36 @@ export type Entry = {
   end?: string | null;
   regular: number;
   overtime: number;
-  submittedAt?: string;
+  submittedAt?: string | null;
   isLate: boolean;
   adminNote?: string;
+};
+
+export type AdminEntriesResponse = {
+  items: Entry[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    pages: number;
+  };
+  totals: {
+    regular: number;
+    overtime: number;
+  };
+  lateCount: number;
+  hoursByWorker: Array<{
+    workerId: string;
+    workerName: string;
+    regular: number;
+    overtime: number;
+    total: number;
+    entries: number;
+  }>;
+};
+
+export type DashboardSummary = {
+  activeWorkers: number;
+  submittedToday: number;
+  missingToday: number;
 };
