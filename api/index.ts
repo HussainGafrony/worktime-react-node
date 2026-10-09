@@ -1,12 +1,12 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import ExcelJS from 'exceljs';
 import { AppError, text } from './lib/errors';
 import { Admin, Entry, Site, Worker, connectDatabase, databaseName, objectId, validId } from './lib/db';
 import { type AuthenticatedRequest, authenticate, findWorkerByPin, jwtSecret, loginAdmin, requireAdmin, workerPinKey } from './lib/auth';
 import { adminEntryPage, allEntries, buildEntryQuery, listEntries } from './lib/entries';
 import { appDate, hoursFor, isLateSubmission, validateWorkDate } from './lib/time';
+import { buildXlsx } from './lib/xlsx';
 
 const app = express();
 app.disable('x-powered-by');
@@ -240,46 +240,25 @@ app.get('/api/admin/entries/export', authenticate, requireAdmin, route(async (re
     return res.send(csv);
   }
 
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'WorkTime';
-  workbook.created = new Date();
-  const sheet = workbook.addWorksheet('Timesheets');
-  sheet.columns = [
-    { header: 'Worker', key: 'worker', width: 24 },
-    { header: 'Date', key: 'date', width: 14 },
-    { header: 'Work site', key: 'site', width: 24 },
-    { header: 'Start', key: 'start', width: 10 },
-    { header: 'Finish', key: 'finish', width: 10 },
-    { header: 'Regular', key: 'regular', width: 12 },
-    { header: 'Overtime', key: 'overtime', width: 12 },
-    { header: 'Status', key: 'status', width: 14 },
-    { header: 'Submitted at', key: 'submittedAt', width: 24 },
-    { header: 'Accountant note', key: 'adminNote', width: 40 }
+  const xlsxRows = [
+    headers,
+    ...rows.map((row) => [
+      row.workerName,
+      row.date,
+      row.siteName,
+      row.start || '',
+      row.end || '',
+      row.regular,
+      row.overtime,
+      row.isLate ? 'Late' : 'On time',
+      row.submittedAt || '',
+      row.adminNote || ''
+    ])
   ];
-
-  for (const row of rows) {
-    sheet.addRow({
-      worker: row.workerName,
-      date: row.date,
-      site: row.siteName,
-      start: row.start || '',
-      finish: row.end || '',
-      regular: row.regular,
-      overtime: row.overtime,
-      status: row.isLate ? 'Late' : 'On time',
-      submittedAt: row.submittedAt || '',
-      adminNote: row.adminNote || ''
-    });
-  }
-
-  sheet.getRow(1).font = { bold: true };
-  sheet.views = [{ state: 'frozen', ySplit: 1 }];
-  sheet.autoFilter = { from: 'A1', to: 'J1' };
-
-  const buffer = await workbook.xlsx.writeBuffer();
+  const buffer = buildXlsx(xlsxRows);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
-  return res.send(Buffer.from(buffer));
+  return res.send(buffer);
 }));
 
 app.get('/api/admin/workers', authenticate, requireAdmin, route(async (_req, res) => {
