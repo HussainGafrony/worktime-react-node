@@ -1,11 +1,11 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { AppError, text } from './lib/errors';
-import { Admin, Entry, Site, Worker, connectDatabase, databaseName, objectId, validId } from './lib/db';
-import { type AuthenticatedRequest, authenticate, createSession, findWorkerByPin, loginAdmin, requireAdmin, revokeSession, workerPinKey } from './lib/auth';
-import { adminEntryPage, allEntries, buildEntryQuery, listEntries } from './lib/entries';
-import { appDate, hoursFor, isLateSubmission, validateWorkDate } from './lib/time';
-import { buildXlsx } from './lib/xlsx';
+import { AppError, text } from './lib/errors.js';
+import { Admin, Entry, Site, Worker, connectDatabase, databaseName, objectId, validId } from './lib/db.js';
+import { type AuthenticatedRequest, authenticate, createSession, findWorkerByPin, loginAdmin, requireAdmin, revokeSession, workerPinKey } from './lib/auth.js';
+import { adminEntryPage, allEntries, buildEntryQuery, listEntries } from './lib/entries.js';
+import { appDate, hoursFor, isLateSubmission, validateWorkDate } from './lib/time.js';
+import { buildXlsx } from './lib/xlsx.js';
 
 const app = express();
 app.disable('x-powered-by');
