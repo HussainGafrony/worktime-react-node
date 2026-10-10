@@ -1,4 +1,3 @@
-import mongoose from 'mongoose';
 import { Entry, objectId, validId } from './db.js';
 import { isLateSubmission, isoWeekRange, monthRange } from './time.js';
 import { AppError, text } from './errors.js';
@@ -163,6 +162,3 @@ export async function allEntries(query: Record<string, unknown>, maxRows = 50000
   return listEntries(query, maxRows, 0);
 }
 
-export function mongoId(value: string) {
-  return new mongoose.Types.ObjectId(value);
-}
