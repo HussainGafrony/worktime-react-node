@@ -424,6 +424,18 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     name?: string;
   };
 
+  if (mongoError.code === 13) {
+    return fail(res, 503, 'DATABASE_PERMISSION_DENIED', 'Database user does not have permission for this database.');
+  }
+
+  if (
+    mongoError.name === 'MongoServerSelectionError' ||
+    mongoError.name === 'MongooseServerSelectionError' ||
+    mongoError.name === 'MongoNetworkError'
+  ) {
+    return fail(res, 503, 'DATABASE_UNAVAILABLE', 'Database connection is unavailable.');
+  }
+
   if (mongoError.code === 11000) {
     if (mongoError.keyPattern?.pinKey) {
       return fail(res, 409, 'PIN_EXISTS', 'This PIN is already assigned to another worker.');
