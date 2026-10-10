@@ -8,7 +8,9 @@ import type { AdminEntriesResponse, DashboardSummary, Entry, Site, Worker } from
 
 type AdminTab = 'timesheets' | 'workers' | 'sites';
 type Filters = { workerId: string; site: string; date: string; week: string; month: string };
+type SeedResult = { workersCreated: number; sitesCreated: number; entriesCreated: number };
 const emptyFilters: Filters = { workerId: '', site: '', date: '', week: '', month: '' };
+const seedDataEnabled = import.meta.env.VITE_ENABLE_SEED_DATA?.toLowerCase() === 'true';
 
 function queryString(filters: Filters, extra: Record<string, string | number | boolean> = {}) {
   const params = new URLSearchParams();
@@ -40,6 +42,7 @@ export function AdminPage({ lang, setLang, logout, name }: SharedPageProps) {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   const handleError = (err: unknown) => {
     if (err instanceof ApiError && err.code === 'AUTH_REQUIRED') logout();
@@ -165,6 +168,27 @@ export function AdminPage({ lang, setLang, logout, name }: SharedPageProps) {
     await loadLateRows(1);
   };
 
+  const seedData = async () => {
+    if (!window.confirm(t(lang, 'confirmSeedData'))) return;
+
+    resetMessages();
+    setSeeding(true);
+    try {
+      const result = await api<SeedResult>('/admin/seed', { method: 'POST' });
+      setMessage(
+        `${t(lang, 'seedDataDone')} ${result.workersCreated} / ${result.sitesCreated} / ${result.entriesCreated}`
+      );
+      setPage(1);
+      setLatePage(1);
+      setLateReport(null);
+      await Promise.all([loadMeta(), loadReport(1)]);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setSeeding(false);
+    }
+  };
+
   const exportRows = async (format: 'csv' | 'xlsx') => {
     try {
       const qs = queryString(filters, { format });
@@ -181,11 +205,30 @@ export function AdminPage({ lang, setLang, logout, name }: SharedPageProps) {
   return (
     <main className="shell wide admin-shell">
       <Header title={t(lang, 'dashboard')} lang={lang} setLang={setLang} logout={logout} name={name} />
-      <nav className="nav admin-nav">
-        {(['timesheets', 'workers', 'sites'] as AdminTab[]).map((item) => (
-          <button type="button" key={item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{t(lang, item)}</button>
-        ))}
-      </nav>
+      <div className="admin-toolbar">
+        <nav className="nav admin-nav">
+          {(['timesheets', 'workers', 'sites'] as AdminTab[]).map((item) => (
+            <button type="button" key={item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{t(lang, item)}</button>
+          ))}
+        </nav>
+
+        {seedDataEnabled && (
+          <button
+            type="button"
+            className="seed-icon-button"
+            onClick={() => void seedData()}
+            disabled={seeding}
+            title={t(lang, 'seedData')}
+            aria-label={t(lang, 'seedData')}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <ellipse cx="12" cy="5" rx="7" ry="3" />
+              <path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5" />
+              <path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       {error && <Alert kind="error">{error}</Alert>}
       {message && <Alert kind="success">{message}</Alert>}
