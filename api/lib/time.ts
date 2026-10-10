@@ -1,4 +1,4 @@
-import { AppError } from './errors';
+import { AppError } from './errors.js';
 
 export const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Europe/Athens';
 
