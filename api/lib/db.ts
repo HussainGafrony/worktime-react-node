@@ -101,6 +101,7 @@ export const Entry = (mongoose.models.Entry as Model<EntryRecord>) || mongoose.m
 export const Session = (mongoose.models.Session as Model<SessionRecord>) || mongoose.model<SessionRecord>('Session', sessionSchema);
 
 let connectionPromise: Promise<typeof mongoose> | null = null;
+let adminBootstrapPromise: Promise<void> | null = null;
 
 export function databaseName() {
   return mongoose.connection.name || '';
@@ -113,27 +114,49 @@ function normalizeEmail(value: unknown) {
 async function ensureInitialAdmin() {
   if (await Admin.exists({})) return;
 
-  const email = normalizeEmail(process.env.ADMIN_EMAIL);
-  const password = String(process.env.ADMIN_PASSWORD ?? '');
+  if (!adminBootstrapPromise) {
+    adminBootstrapPromise = (async () => {
+      if (await Admin.exists({})) return;
 
-  if (!email || !password) {
-    throw new AppError(500, 'ADMIN_NOT_CONFIGURED', 'Initial admin is not configured.');
-  }
+      // A database can be dropped while a warm serverless process is still alive.
+      // Recreate all critical indexes before bootstrapping the first admin.
+      await Promise.all([
+        Admin.createIndexes(),
+        Worker.createIndexes(),
+        Site.createIndexes(),
+        Entry.createIndexes(),
+        Session.createIndexes()
+      ]);
 
-  if (password.length < 10) {
-    throw new AppError(500, 'ADMIN_NOT_CONFIGURED', 'Initial admin password must be at least 10 characters.');
-  }
+      if (await Admin.exists({})) return;
 
-  try {
-    await Admin.create({
-      email,
-      passwordHash: await bcrypt.hash(password, 12),
-      active: true
+      const email = normalizeEmail(process.env.ADMIN_EMAIL);
+      const password = String(process.env.ADMIN_PASSWORD ?? '');
+
+      if (!email || !password) {
+        throw new AppError(500, 'ADMIN_NOT_CONFIGURED', 'Initial admin is not configured.');
+      }
+
+      if (password.length < 10) {
+        throw new AppError(500, 'ADMIN_NOT_CONFIGURED', 'Initial admin password must be at least 10 characters.');
+      }
+
+      try {
+        await Admin.create({
+          email,
+          passwordHash: await bcrypt.hash(password, 12),
+          active: true
+        });
+      } catch (error: unknown) {
+        const mongoError = error as { code?: number };
+        if (mongoError.code !== 11000) throw error;
+      }
+    })().finally(() => {
+      adminBootstrapPromise = null;
     });
-  } catch (error: unknown) {
-    const mongoError = error as { code?: number };
-    if (mongoError.code !== 11000) throw error;
   }
+
+  await adminBootstrapPromise;
 }
 
 export async function connectDatabase() {
@@ -145,9 +168,9 @@ export async function connectDatabase() {
       connectionPromise = mongoose.connect(uri, {
         serverSelectionTimeoutMS: 10000,
         maxPoolSize: 10
-      }).catch((error) => {
+      }).catch(() => {
         connectionPromise = null;
-        throw error;
+        throw new AppError(503, 'DATABASE_UNAVAILABLE', 'Database connection is unavailable.');
       });
     }
     await connectionPromise;
