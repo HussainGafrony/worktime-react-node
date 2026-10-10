@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
-import { Entry, objectId, validId } from './db';
-import { isLateSubmission, isoWeekRange, monthRange } from './time';
-import { AppError, text } from './errors';
+import { Entry, objectId, validId } from './db.js';
+import { isLateSubmission, isoWeekRange, monthRange } from './time.js';
+import { AppError, text } from './errors.js';
 
 export type EntryQueryInput = {
   worker?: unknown;
