@@ -6,6 +6,7 @@ import { type AuthenticatedRequest, authenticate, createSession, findWorkerByPin
 import { adminEntryPage, allEntries, buildEntryQuery, listEntries } from './lib/entries.js';
 import { appDate, hoursFor, isLateSubmission, validateWorkDate } from './lib/time.js';
 import { buildXlsx } from './lib/xlsx.js';
+import { seedDemoData } from './lib/seed.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -188,6 +189,14 @@ app.get('/api/admin/dashboard', authenticate, requireAdmin, route(async (_req, r
     submittedToday: submittedIds.length,
     missingToday: Math.max(0, activeIds.length - submittedIds.length)
   });
+}));
+
+app.post('/api/admin/seed', authenticate, requireAdmin, route(async (_req, res) => {
+  if (String(process.env.VITE_ENABLE_SEED_DATA).toLowerCase() !== 'true') {
+    return fail(res, 404, 'FEATURE_DISABLED', 'Demo data seeding is disabled.');
+  }
+
+  return res.json(await seedDemoData());
 }));
 
 app.get('/api/admin/entries', authenticate, requireAdmin, route(async (req, res) => {
