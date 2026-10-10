@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
-import { Admin, Session, Worker, connectDatabase, validId } from './db';
-import { AppError, text } from './errors';
+import { Admin, Session, Worker, connectDatabase, validId } from './db.js';
+import { AppError, text } from './errors.js';
 
 export type Role = 'admin' | 'worker';
 export type AuthSession = { role: Role; id: string };
