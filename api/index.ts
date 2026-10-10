@@ -266,7 +266,7 @@ app.get('/api/admin/entries/export', authenticate, requireAdmin, route(async (re
       row.adminNote || ''
     ])
   ];
-  const buffer = buildXlsx(xlsxRows);
+  const buffer = await buildXlsx(xlsxRows);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
   return res.send(buffer);
