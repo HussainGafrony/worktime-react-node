@@ -69,7 +69,7 @@ const siteSchema = new mongoose.Schema<SiteRecord>({
 }, schemaOptions);
 
 const sessionSchema = new mongoose.Schema<SessionRecord>({
-  tokenHash: { type: String, required: true, unique: true, index: true, minlength: 64, maxlength: 64 },
+  tokenHash: { type: String, required: true, unique: true, minlength: 64, maxlength: 64 },
   role: { type: String, required: true, enum: ['admin', 'worker'], index: true },
   accountId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
   expiresAt: { type: Date, required: true, index: { expires: 0 } }
@@ -116,8 +116,6 @@ async function ensureInitialAdmin() {
 
   if (!adminBootstrapPromise) {
     adminBootstrapPromise = (async () => {
-      if (await Admin.exists({})) return;
-
       if (await Admin.exists({})) return;
 
       const email = normalizeEmail(process.env.ADMIN_EMAIL);
