@@ -1,45 +1,56 @@
 # WorkTime
 
-WorkTime is a mobile-first work-time reporting application for workers and an accountant/admin.
+WorkTime is a small full-stack app for recording worker hours and managing them from an accountant/admin dashboard.
 
-## Stack
+## Tech stack
 
-- React 19 + TypeScript + Vite
+- React + TypeScript + Vite
 - Node.js + Express
 - MongoDB + Mongoose
-- bcryptjs for password/PIN verification
-- Database-backed opaque session authentication
-- Built-in OpenXML writer for real `.xlsx` exports (no spreadsheet runtime dependency)
-- Vercel for hosting and serverless API deployment
+- bcryptjs
+- ExcelJS
+- Vercel
 
-## Production URLs
+## Main pages
 
-- Worker portal: `/worker`
-- Accountant portal: `/admin`
-- Root `/` redirects to `/worker`
-- Unknown paths are handled by Vercel as real 404s.
+- Worker: `/worker`
+- Admin: `/admin`
+- Health check: `/api/health`
 
-## Official MongoDB database
+## Main features
 
-The application now relies only on the database name inside `MONGODB_URI`.
+### Worker
 
-Example:
+- Login with PIN
+- Choose date and work site
+- Enter start and finish time
+- Submit older dates
+- Future dates are blocked
+- One entry per worker per day
+- Sunday records date + site with 0 hours
+- View recent entries
 
-```env
-MONGODB_URI=mongodb+srv://USER:PASSWORD@CLUSTER/worktimecluster?retryWrites=true&w=majority&appName=Cluster0
-```
+### Admin
 
-In this example, the selected database is `worktimecluster`.
+- Login with email and password
+- Create/edit/enable/disable workers
+- Change worker PIN
+- Create/edit/enable/disable sites
+- View and filter timesheets
+- Filter by worker, site, date, week, or month
+- View regular and overtime totals
+- View late submissions
+- Edit accountant note only
+- Export CSV
+- Export Excel
+- Optional demo-data button controlled by an environment variable
 
-If the Atlas cluster currently contains both `worktime` and `worktimecluster`, make sure the production `MONGODB_URI` points to the intended one before archiving or deleting the older database.
+## Work-hour rules
 
-Expected collections:
-
-- `admins`
-- `workers`
-- `sites`
-- `entries`
-- `sessions`
+- Monday-Friday regular hours: 08:00-16:00
+- Saturday regular hours: 08:00-15:00
+- Hours outside the regular period are overtime
+- Sunday has 0 working hours
 
 ## Environment variables
 
@@ -49,139 +60,52 @@ PIN_LOOKUP_SECRET=replace-with-a-long-random-secret
 APP_TIMEZONE=Europe/Athens
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=ChangeMe123!
+VITE_ENABLE_SEED_DATA=false
 ```
 
-`PIN_LOOKUP_SECRET` is required and must be at least 24 characters. Existing workers are migrated automatically on their first successful PIN login after this change.
+`PIN_LOOKUP_SECRET` must be at least 24 characters.
 
-## Initial admin bootstrap
+Set:
 
-On the first successful database connection:
-
-1. If the `admins` collection already contains an admin, no bootstrap occurs.
-2. If it is empty, the API reads `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
-3. The password is hashed with bcrypt.
-4. The admin is stored in MongoDB.
-5. Future logins are verified against MongoDB, not directly against the environment password.
-
-The initial password must be at least 10 characters.
-
-## Authentication sessions
-
-Authentication no longer uses JWTs. Login creates a cryptographically random opaque token. Only a SHA-256 hash of that token is stored in the `sessions` collection.
-
-- Accountant sessions expire after 12 hours.
-- Worker sessions expire after 30 days.
-- MongoDB TTL cleanup removes expired session records.
-- Logout revokes the current session.
-- Old JWT-based sessions are intentionally invalid after this migration and users must sign in again.
-
-## Worker authentication
-
-Workers sign in with a numeric PIN.
-
-- PIN length: 4–12 digits.
-- The PIN itself is stored as a bcrypt hash.
-- A deterministic HMAC key is stored separately for indexed lookup.
-- Disabled workers cannot authenticate.
-
-## Work-entry rules
-
-A worker can create one entry per work date.
-
-- Future dates are rejected.
-- Previous dates are allowed.
-- Previous-date submissions are marked `isLate=true`.
-- `submittedAt` records the actual submission time.
-- Sunday stores date + site only and records 0 hours.
-- Time choices are restricted to 30-minute steps.
-
-Current regular-hour windows:
-
-- Monday–Friday: 08:00–16:00
-- Saturday: 08:00–15:00
-- Time outside the regular window is overtime.
-
-The current data model allows only one entry per worker per date.
-
-## Accountant permissions
-
-The accountant can:
-
-- Create/update/enable/disable workers.
-- Change worker PINs.
-- Create/update/enable/disable sites.
-- View filtered timesheets.
-- View regular/overtime totals.
-- View hours grouped by worker.
-- View late-submission counts and lists.
-- Export filtered data as CSV or real XLSX.
-- Add or edit an accountant note.
-
-The accountant cannot edit worker-submitted date, site, start time, finish time, regular hours, or overtime hours.
-
-## Reporting API
-
-The accountant UI uses server-side filtering and pagination instead of loading thousands of rows into the browser.
-
-Main endpoint:
-
-```text
-GET /api/admin/entries
+```env
+VITE_ENABLE_SEED_DATA=true
 ```
 
-Supported query parameters:
+to show the demo-data icon in the admin dashboard. The backend checks the same flag before allowing demo data to be created.
 
-- `worker`
-- `site`
-- `date`
-- `week` in `YYYY-Www` form
-- `month` in `YYYY-MM` form
-- `late=true`
-- `page`
-- `pageSize` (max 200)
+## Authentication
 
-The response contains:
+The app stores login sessions in MongoDB.
 
-- paginated items
-- total row count
-- page count
-- total regular hours
-- total overtime hours
-- late count
-- hours grouped by worker
+- Admin session: 12 hours
+- Worker session: 30 days
+- Logout removes the current session
+- Disabled users cannot keep using the app
 
-Exports:
+Worker PINs and the admin password are stored as hashes.
 
-```text
-GET /api/admin/entries/export?format=csv
-GET /api/admin/entries/export?format=xlsx
-```
+## MongoDB collections
 
-Exports use the same filters as the report endpoint. A safety limit prevents exports above 50,000 rows without narrowing filters.
+- `admins`
+- `workers`
+- `sites`
+- `entries`
+- `sessions`
 
-## Frontend structure
+The database name comes from `MONGODB_URI`.
+
+## Project structure
 
 ```text
 src/
   App.tsx
-  main.tsx
   api.ts
   i18n.ts
   types.ts
   components/
-    Common.tsx
-    EntriesTable.tsx
-  pages/
-    LoginPage.tsx
-    WorkerPage.tsx
-    AdminPage.tsx
   lib/
-    date.ts
-```
+  pages/
 
-## Backend structure
-
-```text
 api/
   index.ts
   lib/
@@ -189,18 +113,17 @@ api/
     db.ts
     entries.ts
     errors.ts
+    seed.ts
     time.ts
+    xlsx.ts
 ```
 
-`api/index.ts` stays the Vercel serverless entrypoint while reusable database, authentication, reporting, error, and time logic are separated into focused modules.
+The code is split by responsibility, but the flow stays simple:
 
-## PWA/cache maintenance
-
-The previous service worker was removed during active development because stale cached application shells made mobile debugging and deployments harder to verify.
-
-The web manifest remains and starts at `/worker`.
-
-If offline support is added later, introduce a versioned cache strategy with explicit asset/runtime policies rather than restoring the old catch-all service worker.
+1. React calls an API route.
+2. Express validates the request.
+3. Mongoose reads or writes MongoDB.
+4. The API returns JSON to React.
 
 ## Build
 
@@ -209,43 +132,33 @@ npm install
 npm run build
 ```
 
-The build runs TypeScript checks for both frontend and API before Vite production bundling.
+The build checks TypeScript for both frontend and backend, then creates the Vite production build.
 
-## Deployment checklist
+## Quick test checklist
 
-Before every production deployment:
+After deployment, test:
 
-1. Confirm `MONGODB_URI` points to the correct Atlas cluster and database.
-2. Confirm the database name in the URI is the intended production database.
-3. Confirm `PIN_LOOKUP_SECRET` is at least 24 characters.
-4. Confirm `ADMIN_EMAIL` and `ADMIN_PASSWORD` are set for first bootstrap only.
-5. Run `npm run build`.
-6. Verify `/api/health` returns `database: "worktimecluster"`.
-7. Test worker login at `/worker`.
-8. Test accountant login at `/admin`.
-9. Create a test entry and verify hours.
-10. Test a late entry.
-11. Test CSV and XLSX export.
-12. Confirm unknown URLs return a real 404.
+1. `/api/health`
+2. Admin login
+3. Worker login
+4. Create worker
+5. Create site
+6. Submit a normal weekday entry
+7. Submit an older entry and confirm it is late
+8. Submit Sunday and confirm 0 hours
+9. Confirm duplicate day is blocked
+10. Check filters and pagination
+11. Edit accountant note
+12. Export CSV
+13. Export Excel
+14. Enable and test demo-data button if needed
 
-## Database maintenance checklist
+## Current limits
 
-Before deleting an old database:
+The app intentionally keeps the business model simple:
 
-1. Compare document counts for `admins`, `workers`, `sites`, and `entries`.
-2. Export/backup the old database.
-3. Verify production uses `worktimecluster`.
-4. Verify worker and accountant logins against the production deployment.
-5. Only then archive or delete the unused database.
-
-## Known future maintenance
-
-Not included in this maintenance pass:
-
-- Login rate limiting.
-- Admin password reset/change flow.
-- Multi-site shifts in one day.
-- Break/lunch deduction.
-- Overnight shifts.
-- HttpOnly-cookie authentication.
-- Automated tests and CI.
+- One work site per worker per day
+- No lunch/break deduction
+- No overnight shifts
+- No admin password-reset screen
+- No login rate limiting yet
