@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { Admin, Session, Worker, connectDatabase, validId } from './db';
-import { text } from './errors';
+import { AppError, text } from './errors';
 
 export type Role = 'admin' | 'worker';
 export type AuthSession = { role: Role; id: string };
@@ -15,7 +15,7 @@ function fail(res: Response, status: number, code: string, error: string) {
 export function pinLookupSecret() {
   const value = process.env.PIN_LOOKUP_SECRET;
   if (!value || value.length < 24) {
-    throw new Error('PIN_LOOKUP_SECRET is not configured securely');
+    throw new AppError(500, 'PIN_LOOKUP_NOT_CONFIGURED', 'Worker PIN authentication is not configured.');
   }
   return value;
 }
@@ -112,8 +112,8 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     };
 
     return next();
-  } catch {
-    return fail(res, 401, 'AUTH_REQUIRED', 'Please sign in again.');
+  } catch (error) {
+    return next(error);
   }
 }
 
