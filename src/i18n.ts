@@ -80,6 +80,10 @@ export const translations = {
     createdSite: 'Site created successfully.',
     updatedSite: 'Site updated successfully.',
     updatedEntry: 'Note updated successfully.',
+    seedData: 'Load demo data',
+    confirmSeedData: 'Add demo workers, sites, and timesheets? Existing data will not be deleted.',
+    seedDataDone: 'Demo data added (workers / sites / entries):',
+    featureDisabled: 'Demo data seeding is disabled.',
     confirmDisableWorker: 'Disable this worker? Historical records will be kept.',
     confirmDisableSite: 'Disable this site? Historical records will be kept.',
     noFilteredRows: 'No timesheet rows match these filters.',
@@ -192,6 +196,10 @@ export const translations = {
     createdSite: 'Το εργοτάξιο δημιουργήθηκε επιτυχώς.',
     updatedSite: 'Το εργοτάξιο ενημερώθηκε επιτυχώς.',
     updatedEntry: 'Η σημείωση ενημερώθηκε επιτυχώς.',
+    seedData: 'Φόρτωση δοκιμαστικών δεδομένων',
+    confirmSeedData: 'Να προστεθούν δοκιμαστικοί εργαζόμενοι, εργοτάξια και ωρολόγια; Τα υπάρχοντα δεδομένα δεν θα διαγραφούν.',
+    seedDataDone: 'Προστέθηκαν δοκιμαστικά δεδομένα (εργαζόμενοι / εργοτάξια / εγγραφές):',
+    featureDisabled: 'Η φόρτωση δοκιμαστικών δεδομένων είναι απενεργοποιημένη.',
     confirmDisableWorker: 'Να απενεργοποιηθεί ο εργαζόμενος; Το ιστορικό θα διατηρηθεί.',
     confirmDisableSite: 'Να απενεργοποιηθεί το εργοτάξιο; Το ιστορικό θα διατηρηθεί.',
     noFilteredRows: 'Δεν υπάρχουν εγγραφές που να ταιριάζουν στα φίλτρα.',
@@ -264,6 +272,7 @@ const errorKeys: Record<string, TranslationKey> = {
   NOTE_ONLY: 'noteOnlyError',
   INVALID_EXPORT_FORMAT: 'invalidExportFormat',
   EXPORT_TOO_LARGE: 'exportTooLarge',
+  FEATURE_DISABLED: 'featureDisabled',
   SERVER_ERROR: 'genericError'
 };
 
