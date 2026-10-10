@@ -118,16 +118,6 @@ async function ensureInitialAdmin() {
     adminBootstrapPromise = (async () => {
       if (await Admin.exists({})) return;
 
-      // A database can be dropped while a warm serverless process is still alive.
-      // Recreate all critical indexes before bootstrapping the first admin.
-      await Promise.all([
-        Admin.createIndexes(),
-        Worker.createIndexes(),
-        Site.createIndexes(),
-        Entry.createIndexes(),
-        Session.createIndexes()
-      ]);
-
       if (await Admin.exists({})) return;
 
       const email = normalizeEmail(process.env.ADMIN_EMAIL);
