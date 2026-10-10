@@ -34,12 +34,20 @@ export async function createSession(role: Role, accountId: string) {
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + (role === 'admin' ? 12 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000));
 
-  await Session.create({
-    tokenHash: sessionTokenHash(token),
-    role,
-    accountId,
-    expiresAt
-  });
+  try {
+    await Session.create({
+      tokenHash: sessionTokenHash(token),
+      role,
+      accountId,
+      expiresAt
+    });
+  } catch (error) {
+    const mongoError = error as { code?: number };
+    if (mongoError.code === 13) {
+      throw new AppError(503, 'DATABASE_PERMISSION_DENIED', 'Database user does not have permission to write sessions.');
+    }
+    throw new AppError(503, 'SESSION_UNAVAILABLE', 'Unable to create a login session.');
+  }
 
   return token;
 }
@@ -51,7 +59,8 @@ export async function revokeSession(token: string) {
 
 export async function loginAdmin(email: string, password: string) {
   const account = await Admin.findOne({ email, active: true }).select('+passwordHash');
-  if (!account || !(await bcrypt.compare(password, account.passwordHash))) return null;
+  if (!account || typeof account.passwordHash !== 'string' || !account.passwordHash) return null;
+  if (!(await bcrypt.compare(password, account.passwordHash))) return null;
   return account;
 }
 
