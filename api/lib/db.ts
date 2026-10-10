@@ -1,6 +1,6 @@
 import mongoose, { type Model } from 'mongoose';
 import bcrypt from 'bcryptjs';
-import { AppError, text } from './errors';
+import { AppError, text } from './errors.js';
 
 const schemaOptions = { timestamps: true, versionKey: false, strict: true } as const;
 
